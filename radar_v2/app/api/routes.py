@@ -25,6 +25,12 @@ def health():
     return jsonify({"ok": True, "ts": dt.datetime.now().isoformat()})
 
 
+@bp.get("/session")
+def session_status():
+    from flask import session
+    return jsonify({"ok": True, "authenticated": bool(session.get("authenticated"))})
+
+
 # ── tasks ─────────────────────────────────────────────────────────────────────
 
 @bp.get("/tasks")

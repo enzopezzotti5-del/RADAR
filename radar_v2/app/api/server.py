@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 # keeps configuration independent from the caller's current directory.
 load_dotenv(PROJECT_ROOT / ".env")
 
-PUBLIC_ENDPOINTS = {"login", "logout", "health", "api_v2.health", "static"}
+PUBLIC_ENDPOINTS = {"login", "logout", "health", "api_v2.health", "api_v2.session_status", "static"}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -128,7 +128,10 @@ def create_app() -> Flask:
 
         if endpoint in PUBLIC_ENDPOINTS:
             return None
-        if request.path.startswith("/static/"):
+        # Vite emits production bundles at /assets. They must load before a
+        # session exists, otherwise Flask redirects module requests to /login
+        # and Chrome rejects the returned HTML for its JavaScript MIME type.
+        if request.path.startswith(("/static/", "/assets/")):
             return None
         if request.path == "/favicon.ico":
             return None

@@ -54,8 +54,10 @@ async function radarWrite<T>(path: string, method: 'POST' | 'DELETE', body?: unk
 }
 
 export async function radarSessionIsAuthenticated(): Promise<boolean> {
-  const response = await fetch(readUrl('/tasks'), { credentials: 'include' })
-  return response.ok
+  const response = await fetch(readUrl('/session'), { credentials: 'include' })
+  if (!response.ok) return false
+  const payload = await response.json().catch(() => null)
+  return Boolean(payload?.authenticated)
 }
 
 export async function radarLogin(username: string, password: string): Promise<void> {
