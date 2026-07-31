@@ -1,8 +1,8 @@
 const apiBase = (import.meta.env.VITE_RADAR_API_BASE || '/api').replace(/\/$/, '')
-const readOnly = (import.meta.env.VITE_RADAR_READ_ONLY || '').toLowerCase() === 'true'
+const readOnly = (import.meta.env.VITE_RADAR_READ_ONLY || 'true').toLowerCase() === 'true'
 
 export const isLegacyCompatEnabled =
-  (import.meta.env.VITE_RADAR_DATA_SOURCE || '').toLowerCase() === 'flask'
+  (import.meta.env.VITE_RADAR_DATA_SOURCE || 'flask').toLowerCase() === 'flask'
 export const isFlaskIntegrationEnabled = isLegacyCompatEnabled && !readOnly
 export const isRadarReadOnlyMode = isLegacyCompatEnabled && readOnly
 
