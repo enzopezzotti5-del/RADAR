@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}Watcher e Pipelines{% endblock %}
+{% block page_title %}Watcher e Pipelines{% endblock %}
+{% block header_subtitle %}Acompanhamento do watcher, sessões de processamento e reconciliação dos PDFs.{% endblock %}
+{% block breadcrumb %}Operação{% endblock %}
+
+{% block topbar_actions %}
+<span id="watcherLastUpdated" class="text-muted small"></span>
+<button class="btn btn-primary btn-sm" id="watcherRefreshBtn" type="button">Atualizar</button>
+<span id="watcherConnectionStatus" class="badge bg-primary-lt text-primary"></span>
+<div id="watcherStaleIndicator" class="watcher-stale-indicator hidden" role="status">Dados obsoletos</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='watcher.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="watcher-page" data-page="watcher" class="watcher-page">
+  <div id="watcherNoticeRow" class="watcher-notice-row" role="status"></div>
+
+  <div class="card radar-surface">
+    <div class="card-body">
+      <nav class="watcher-tabs nav nav-pills" role="tablist" aria-label="Abas do Watcher">
+        <button type="button" role="tab" aria-selected="true" aria-controls="tab-overview" id="watcherTabOverview" class="watcher-tab active nav-link" data-tab="overview">Visão geral</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="tab-sessions" id="watcherTabSessions" class="watcher-tab nav-link" data-tab="sessions">Sessões</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="tab-files" id="watcherTabFiles" class="watcher-tab nav-link" data-tab="files">Arquivos</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="tab-alerts" id="watcherTabAlerts" class="watcher-tab nav-link" data-tab="alerts">Alertas</button>
+      </nav>
+    </div>
+  </div>
+
+  <div class="row g-3 watcher-main-grid">
+    <div class="col-12 col-xl-8">
+      <main class="watcher-main">
+        <section id="tab-overview" class="watcher-tab-panel active" role="tabpanel" aria-labelledby="watcherTabOverview">
+          <div class="watcher-summary-grid">
+            <section class="card watcher-section">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Tarefa agendada</div>
+                  <div class="text-secondary small">Estado da rotina que alimenta o monitoramento.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="watcher-card-grid">
+                  <article class="watcher-status-card"><span>Estado</span><strong id="tarefaEstado">—</strong></article>
+                  <article class="watcher-status-card"><span>Última execução</span><strong id="tarefaUltimaExecucao">—</strong></article>
+                  <article class="watcher-status-card"><span>Próxima execução</span><strong id="tarefaProximaExecucao">—</strong></article>
+                  <article class="watcher-status-card"><span>Último resultado</span><strong id="tarefaUltimoResultado">—</strong></article>
+                  <article class="watcher-status-card"><span>Usuário</span><strong id="tarefaUsuario">—</strong></article>
+                  <article class="watcher-status-card"><span>Modo de execução</span><strong id="tarefaModoExecucao">—</strong></article>
+                  <article class="watcher-status-card watcher-card-wide"><span>Comando</span><strong id="tarefaComando">—</strong></article>
+                  <article class="watcher-status-card"><span>Disponibilidade</span><strong id="tarefaDisponibilidade">—</strong></article>
+                </div>
+              </div>
+            </section>
+
+            <section class="card watcher-section">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Watcher</div>
+                  <div class="text-secondary small">Estado do serviço que faz a varredura e a reconciliação.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="watcher-card-grid">
+                  <article class="watcher-status-card"><span>Status</span><strong id="watcherStatus">—</strong></article>
+                  <article class="watcher-status-card"><span>Última atividade</span><strong id="watcherUltimaAtividade">—</strong></article>
+                  <article class="watcher-status-card"><span>Último início</span><strong id="watcherUltimoInicio">—</strong></article>
+                  <article class="watcher-status-card"><span>Último fim</span><strong id="watcherUltimoFim">—</strong></article>
+                  <article class="watcher-status-card"><span>Próxima execução estimada</span><strong id="watcherProximaExecucaoWatcher">—</strong></article>
+                  <article class="watcher-status-card"><span>Fonte próxima execução</span><strong id="watcherFonteProxima">—</strong></article>
+                  <article class="watcher-status-card"><span>Lock</span><strong id="watcherLock">—</strong></article>
+                  <article class="watcher-status-card"><span>PID</span><strong id="watcherPid">—</strong></article>
+                  <article class="watcher-status-card"><span>Idade do lock</span><strong id="watcherLockAge">—</strong></article>
+                </div>
+              </div>
+            </section>
+
+            <section class="card watcher-section">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Pipelines</div>
+                  <div class="text-secondary small">Resumo operacional das sessões, PDFs e alertas.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="watcher-card-grid watcher-card-grid-3">
+                  <article class="watcher-status-card"><span>Sessões ativas</span><strong id="pipelinesSessoesAtivas">—</strong></article>
+                  <article class="watcher-status-card"><span>Sessões pendentes</span><strong id="pipelinesSessoesPendentes">—</strong></article>
+                  <article class="watcher-status-card"><span>Sessões interrompidas</span><strong id="pipelinesSessoesInterrompidas">—</strong></article>
+                  <article class="watcher-status-card"><span>Sessões retomáveis</span><strong id="pipelinesSessoesRetomaveis">—</strong></article>
+                  <article class="watcher-status-card"><span>Sessões totais</span><strong id="pipelinesSessoesTotais">—</strong></article>
+                  <article class="watcher-status-card"><span>PDFs na entrada</span><strong id="pipelinesPdfsEntrada">—</strong></article>
+                  <article class="watcher-status-card"><span>PDFs no staging</span><strong id="pipelinesPdfsStaging">—</strong></article>
+                  <article class="watcher-status-card"><span>PDFs parados entrada</span><strong id="pipelinesPdfsParadosEntrada">—</strong></article>
+                  <article class="watcher-status-card"><span>PDFs parados staging</span><strong id="pipelinesPdfsParadosStaging">—</strong></article>
+                  <article class="watcher-status-card"><span>Alertas críticos</span><strong id="pipelinesAlertasCriticos">—</strong></article>
+                  <article class="watcher-status-card"><span>Alertas de atenção</span><strong id="pipelinesAlertasAtencao">—</strong></article>
+                  <article class="watcher-status-card"><span>Não reconhecidos</span><strong id="pipelinesAlertasNaoReconhecidos">—</strong></article>
+                </div>
+                <div id="watcherOverviewMessage" class="watcher-panel-message" role="status"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tab-sessions" class="watcher-tab-panel" role="tabpanel" aria-labelledby="watcherTabSessions">
+          <div class="card watcher-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Filtros</div>
+                <div class="text-secondary small">Reduza a lista por status, concessionária e referência.</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="watcherSessionsFilters" class="watcher-filter-bar" aria-label="Filtros de sessões">
+                <label>
+                  <span>Status</span>
+                  <select id="watcherSessionsStatus" name="status" class="form-select">
+                    <option value="todas">Todas</option>
+                    <option value="em_execucao">Em execução</option>
+                    <option value="pendentes">Pendentes</option>
+                    <option value="retomaveis">Retomáveis</option>
+                    <option value="interrompidas">Interrompidas</option>
+                    <option value="concluidas">Concluídas</option>
+                    <option value="inconsistentes">Inconsistentes</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Concessionária</span>
+                  <select id="watcherSessionsConcessionaria" name="concessionaria" class="form-select">
+                    <option value="">Todas</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Grupo BT/MT</span>
+                  <input type="text" id="watcherSessionsGrupo" name="grupo" placeholder="BT / MT" class="form-control">
+                </label>
+                <label>
+                  <span>Referência</span>
+                  <input type="text" id="watcherSessionsReferencia" name="referencia" placeholder="MM-AAAA" class="form-control">
+                </label>
+                <label class="watcher-filter-wide">
+                  <span>Buscar</span>
+                  <input type="search" id="watcherSessionsSearch" name="q" placeholder="Sessão, carimbo, instalação, arquivo..." class="form-control">
+                </label>
+                <div class="watcher-filter-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Aplicar</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="watcherSessionsClear">Limpar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="card watcher-section">
+            <div class="table-responsive watcher-table-wrap">
+              <table class="table watcher-table align-middle" aria-label="Tabela de sessões">
+                <thead>
+                  <tr>
+                    <th>Sessão</th>
+                    <th>Concessionária</th>
+                    <th>Grupo</th>
+                    <th>Referência</th>
+                    <th>PDFs</th>
+                    <th>Execução</th>
+                    <th>Reconciliação</th>
+                    <th>Etapa</th>
+                    <th>Início</th>
+                    <th>Fim</th>
+                    <th>Retomável</th>
+                    <th>Atualização</th>
+                  </tr>
+                </thead>
+                <tbody id="watcherSessionsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="watcherSessionsMessage" class="watcher-panel-message" role="status"></div>
+        </section>
+
+        <section id="tab-files" class="watcher-tab-panel" role="tabpanel" aria-labelledby="watcherTabFiles">
+          <div class="card watcher-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Arquivos na entrada</div>
+                <div class="text-secondary small">PDFs aguardando processamento na origem.</div>
+              </div>
+            </div>
+            <div class="table-responsive watcher-table-wrap">
+              <table class="table watcher-table align-middle" aria-label="Arquivos na entrada">
+                <thead>
+                  <tr>
+                    <th>Arquivo</th>
+                    <th>Concessionária</th>
+                    <th>Tipo</th>
+                    <th>Idade</th>
+                    <th>Ciclos</th>
+                    <th>Tamanho</th>
+                    <th>Prefixo BB</th>
+                    <th>Nível</th>
+                    <th>Caminho</th>
+                  </tr>
+                </thead>
+                <tbody id="watcherEntradaFilesBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card watcher-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Arquivos no staging</div>
+                <div class="text-secondary small">PDFs já movidos e prontos para a etapa seguinte.</div>
+              </div>
+            </div>
+            <div class="table-responsive watcher-table-wrap">
+              <table class="table watcher-table align-middle" aria-label="Arquivos no staging">
+                <thead>
+                  <tr>
+                    <th>Arquivo</th>
+                    <th>Concessionária</th>
+                    <th>Tipo</th>
+                    <th>Idade</th>
+                    <th>Ciclos</th>
+                    <th>Tamanho</th>
+                    <th>Prefixo BB</th>
+                    <th>Nível</th>
+                    <th>Caminho</th>
+                  </tr>
+                </thead>
+                <tbody id="watcherStagingFilesBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="watcherFilesMessage" class="watcher-panel-message" role="status"></div>
+        </section>
+
+        <section id="tab-alerts" class="watcher-tab-panel" role="tabpanel" aria-labelledby="watcherTabAlerts">
+          <div class="watcher-alert-summary">
+            <article class="card watcher-alert-count-card">
+              <div class="card-body">
+                <span>Críticos</span>
+                <strong id="alertsCountCriticos">—</strong>
+              </div>
+            </article>
+            <article class="card watcher-alert-count-card">
+              <div class="card-body">
+                <span>Atenção</span>
+                <strong id="alertsCountAtencao">—</strong>
+              </div>
+            </article>
+            <article class="card watcher-alert-count-card">
+              <div class="card-body">
+                <span>Informativos</span>
+                <strong id="alertsCountInformativos">—</strong>
+              </div>
+            </article>
+            <article class="card watcher-alert-count-card">
+              <div class="card-body">
+                <span>Não reconhecidos</span>
+                <strong id="alertsCountNaoReconhecidos">—</strong>
+              </div>
+            </article>
+          </div>
+
+          <div class="watcher-alert-list" id="watcherAlertList" role="list" aria-label="Lista de alertas"></div>
+          <div id="watcherAlertsMessage" class="watcher-panel-message" role="status"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="col-12 col-xl-4 hidden" id="watcherDetailColumn">
+      <aside class="card watcher-detail-drawer hidden" id="watcherDetailDrawer" aria-live="polite" aria-label="Detalhe da sessão">
+        <div class="watcher-detail-header">
+          <div>
+            <h2>Detalhes da sessão</h2>
+            <span class="mini-hint">Clique em uma sessão para ver o histórico.</span>
+          </div>
+          <button class="btn btn-outline-secondary btn-sm" id="watcherDetailClose" type="button" aria-label="Fechar painel de detalhes">Fechar</button>
+        </div>
+        <div class="watcher-detail-content" id="watcherSessionDetail">
+          <div class="watcher-empty-state">Selecione uma sessão para abrir o painel de detalhes.</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="watcher-modal hidden" id="watcherActionModal" role="dialog" aria-modal="true" aria-labelledby="watcherActionTitle">
+    <div class="watcher-modal-backdrop" data-modal-close="true"></div>
+    <div class="watcher-modal-panel">
+      <form id="watcherActionForm">
+        <div class="watcher-modal-header">
+          <h2 id="watcherActionTitle">Confirmar ação</h2>
+          <button type="button" class="btn btn-ghost btn-icon" id="watcherActionCancel" aria-label="Fechar modal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <p id="watcherActionMessage" class="text-secondary small mb-0">Confirme a ação antes de continuar.</p>
+        <label>
+          <span>Observação (opcional)</span>
+          <textarea id="watcherActionNote" rows="4" placeholder="Insira uma observação..."></textarea>
+        </label>
+        <div class="watcher-modal-actions">
+          <button type="button" class="btn btn-outline-secondary" id="watcherActionCancelSecondary">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="watcherActionConfirm">Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="watcher-modal hidden" id="watcherLogModal" role="dialog" aria-modal="true" aria-labelledby="watcherLogModalTitle">
+    <div class="watcher-modal-backdrop" data-modal-close="true"></div>
+    <div class="watcher-modal-panel watcher-log-modal-panel">
+      <div class="watcher-modal-header">
+        <h2 id="watcherLogModalTitle">Visualizador de logs</h2>
+        <button type="button" class="btn btn-ghost btn-icon" id="watcherLogClose" aria-label="Fechar log">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <form id="watcherLogFiltersForm" class="watcher-log-filters">
+        <label><span>Session ID</span><input type="text" id="watcherLogFilterSession" name="session_id" class="form-control"></label>
+        <label><span>Carimbo</span><input type="text" id="watcherLogFilterCarimbo" name="carimbo" class="form-control"></label>
+        <label><span>Concessionária</span><input type="text" id="watcherLogFilterConcessionaria" name="concessionaria" class="form-control"></label>
+        <label><span>Nível</span><input type="text" id="watcherLogFilterNivel" name="nivel" class="form-control"></label>
+        <label>
+          <span>Limit</span>
+          <select id="watcherLogFilterLimit" name="limit" class="form-select">
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+          </select>
+        </label>
+        <div class="watcher-log-actions">
+          <button type="submit" class="btn btn-primary btn-sm">Atualizar</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="watcherLogClear">Limpar filtros</button>
+        </div>
+      </form>
+      <div class="watcher-log-status">
+        <span id="watcherLogMeta">0 linhas carregadas</span>
+        <span id="watcherLogOffset">Offset: 0</span>
+      </div>
+      <div class="watcher-log-toolbar">
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-sm" type="button" id="watcherLogPrev">← Anterior</button>
+          <button class="btn btn-outline-secondary btn-sm" type="button" id="watcherLogNext">Próximo →</button>
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" id="watcherLogCopy">Copiar trecho</button>
+      </div>
+      <pre class="watcher-log-viewer" id="watcherLogText" aria-label="Conteúdo do log">Nenhum log carregado.</pre>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script defer src="{{ url_for('static', filename='watcher_mock_data.js') }}"></script>
+<script defer src="{{ url_for('static', filename='watcher.js') }}"></script>
+{% endblock %}

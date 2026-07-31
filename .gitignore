@@ -1,0 +1,92 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.tools/
+dist
+dist-ssr
+dev-dist
+dev-dist-ssr
+*.local
+.pnpm-store
+.pnpm
+
+# pods-manager atomic build operations (rename/restore leftovers).
+# AppManager creates these during build (set-aside previous output before
+# running pnpm build, restore on failure). Success path cleans them up;
+# failure paths may leave orphans. Always ignore them in version control +
+# in the sandbox memGit hydration (see ProjectSandbox.hydrate).
+*.bak-*
+*.legacy-bak-*
+*.failed-*
+*.tmp
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Evaluation screenshots
+screenshot.png
+.eslintcache
+.oxlintcache
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.env
+# The worker is a legacy operational PocketBase integration and is not part of
+# the Flask-backed React frontend candidate.
+worker/
+
+# Runtime data and local integration artifacts
+run_logs/
+logs/
+*.sqlite
+*.sqlite3
+*.db
+_backup_integracao_*/
+pocketbase/
+# The Vite alias uses this source-level guard to block PocketBase at build time.
+!src/lib/
+!src/lib/pocketbase/
+!src/lib/pocketbase/noop.ts
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Browser profiles, downloaded artifacts and operational state are never source.
+core/downloaders/**/chrome_profiles/
+core/downloaders/**/_test_profiles/
+core/downloaders/**/downloads_temp*/
+core/downloaders/**/downloads/
+core/downloaders/**/temp*/
+
+# Only the consolidated Radar launcher is maintained here; historical utility
+# scripts are runtime support files and remain outside the source index.
+/scripts/*
+!/scripts/start_radar.ps1
+
+# Runtime evidence retained locally, never committed with the application code.
+/core/**
+!/core/
+!/core/**/*.py
+/radar_v2/frontend_handoff/
+/radar_v2/workers/
+
+# Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
+core.[0-9]*
