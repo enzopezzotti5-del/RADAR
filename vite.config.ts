@@ -8,18 +8,16 @@ import uidPlugin from './vite-plugin-react-uid'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const radarTarget = env.VITE_RADAR_PROXY_TARGET
+  const radarTarget = env.VITE_RADAR_PROXY_TARGET || 'http://127.0.0.1:5000'
   return ({
   server: {
     host: '::',
     port: 8080,
     proxy: radarTarget
       ? {
-          '/api': {
-            target: radarTarget,
-            changeOrigin: true,
-            secure: false,
-          },
+          '/api': { target: radarTarget, changeOrigin: true, secure: false },
+          '/login': { target: radarTarget, changeOrigin: true, secure: false },
+          '/logout': { target: radarTarget, changeOrigin: true, secure: false },
         }
       : undefined,
   },
