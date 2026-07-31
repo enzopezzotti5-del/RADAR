@@ -30,6 +30,7 @@ google-auth-oauthlib==1.2.2
 
 # ── Web apps (Jesus App / Radar) ──────────────────────────────────────────────
 Flask==3.1.3
+PyYAML==6.0.3
 fastapi==0.135.3
 uvicorn==0.44.0
 waitress==3.0.2
