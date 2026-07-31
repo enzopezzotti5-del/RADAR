@@ -1,0 +1,39 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  ".git",
+  ".rtk",
+  ".runtime",
+  ".venv",
+  "archive",
+  "logs",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "SIM"]
+ignore = [
+  # estilo puro — não bloqueante
+  "E402",  # import not at top (sys.path.insert patterns legítimos)
+  "E501",  # linha longa
+  "E701",  # múltiplas instruções na mesma linha (colon)
+  "E702",  # múltiplas instruções na mesma linha (semicolon)
+  "E741",  # nome de variável ambíguo (l, O, I)
+  # simplificações opcionais — ativar quando refatorar deliberadamente
+  "SIM102",  # collapsible-if
+  "SIM105",  # suppressible-exception (usar contextlib.suppress)
+  "SIM113",  # enumerate em vez de range+index
+  "SIM115",  # open sem with
+  "SIM117",  # múltiplos with
+  # bugs com falso-positivo no padrão threading com lista mutável
+  "B007",  # unused-loop-control-variable
+  "B023",  # function-uses-loop-variable (falso-positivo em threads)
+  "B904",  # raise-without-from-inside-except
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["B011"]

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Histórico{% endblock %}
+{% block page_title %}Histórico de execuções{% endblock %}
+{% block breadcrumb %}Operação{% endblock %}
+{% block header_subtitle %}Consulta consolidada de runs com filtros rápidos e acesso ao log em linha.{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Todas as execuções</div>
+      <div class="text-secondary small">Filtre por tarefa ou status e abra o log sem sair da tela.</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <input id="filter-text" class="form-control form-control-sm" type="search" placeholder="Filtrar por tarefa…" aria-label="Filtrar por nome da tarefa" style="width:220px">
+      <select id="filter-status" class="form-select form-select-sm" aria-label="Filtrar por status" style="width:160px">
+        <option value="">Todos</option>
+        <option value="success">Concluído</option>
+        <option value="error">Falhou</option>
+        <option value="stopped">Parado</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tarefa</th>
+          <th>Categoria</th>
+          <th>Status</th>
+          <th>Origem</th>
+          <th>Início</th>
+          <th>Duração</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="hist-body">
+        <tr><td colspan="8" class="empty-state">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiJson } from "/static/js/app.js";
+import { statusBadge } from "/static/js/components/badge.js";
+import { LogDrawer } from "/static/js/components/drawer.js";
+
+const drawer = new LogDrawer();
+let allRuns = [];
+
+async function load() {
+  try {
+    const { runs } = await apiJson("/api/runs/history?limit=500");
+    allRuns = runs;
+    render();
+  } catch (err) {
+    document.getElementById("hist-body").innerHTML =
+      `<tr><td colspan="8" class="empty-state" style="color:var(--tblr-danger)">Erro ao carregar histórico</td></tr>`;
+  }
+}
+
+function render() {
+  const txt = document.getElementById("filter-text").value.toLowerCase();
+  const status = document.getElementById("filter-status").value;
+  const rows = allRuns.filter((r) =>
+    (!txt || r.task_name.toLowerCase().includes(txt)) &&
+    (!status || r.status === status)
+  );
+  const tbody = document.getElementById("hist-body");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Nenhuma execução encontrada</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((r) => {
+    const dur = r.duration_seconds != null ? `${Math.round(r.duration_seconds)}s` : "—";
+    return `<tr>
+      <td class="font-data">${r.run_id}</td>
+      <td>${r.task_name}</td>
+      <td>${r.category ?? "—"}</td>
+      <td>${statusBadge(r.status).outerHTML}</td>
+      <td>${r.origin ?? "—"}</td>
+      <td class="font-data">${(r.started_at ?? "—").slice(0, 16)}</td>
+      <td class="font-data">${dur}</td>
+      <td>
+        <button class="btn btn-sm btn-ghost" data-run-id="${r.run_id}" data-task-name="${r.task_name}" type="button">Logs</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+document.getElementById("filter-text").addEventListener("input", render);
+document.getElementById("filter-status").addEventListener("change", render);
+
+document.getElementById("hist-body").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-run-id]");
+  if (btn) drawer.open(Number(btn.dataset.runId), btn.dataset.taskName);
+});
+
+load();
+</script>
+{% endblock %}

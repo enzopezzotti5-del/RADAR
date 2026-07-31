@@ -37,9 +37,12 @@ interface ExecutionParameters {
   extra_text: string
 }
 
+const DEFAULT_COMPETENCY = import.meta.env.VITE_RADAR_DEFAULT_COMPETENCY || '2026-08'
+const [DEFAULT_YEAR, DEFAULT_MONTH] = DEFAULT_COMPETENCY.split('-')
+
 const EMPTY_PARAMETERS: ExecutionParameters = {
-  month: '',
-  year: '',
+  month: /^\d{2}$/.test(DEFAULT_MONTH || '') ? DEFAULT_MONTH : '',
+  year: /^\d{4}$/.test(DEFAULT_YEAR || '') ? DEFAULT_YEAR : '',
   selected_type: '',
   stage_flag: '',
   pasta: '',

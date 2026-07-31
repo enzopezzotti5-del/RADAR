@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Painel{% endblock %}
+{% block page_title %}Painel operacional{% endblock %}
+{% block breadcrumb %}Operação{% endblock %}
+{% block header_subtitle %}Resumo da operação, execuções vivas e próximos disparos agendados.{% endblock %}
+
+{% block content %}
+<div class="kpi-row" id="kpi-row">
+  <div class="kpi-card kpi-card--primary">
+    <div class="kpi-card__label">Rodando agora</div>
+    <div class="kpi-card__value" id="kpi-running">—</div>
+  </div>
+  <div class="kpi-card kpi-card--success">
+    <div class="kpi-card__label">Hoje com sucesso</div>
+    <div class="kpi-card__value" id="kpi-success">—</div>
+  </div>
+  <div class="kpi-card kpi-card--error">
+    <div class="kpi-card__label">Hoje com falha</div>
+    <div class="kpi-card__value" id="kpi-error">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">Agendamentos ativos</div>
+    <div class="kpi-card__value" id="kpi-scheds">—</div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Execuções ativas</div>
+          <div class="text-secondary small">Pipelines atualmente em execução.</div>
+        </div>
+        <span id="live-badge" class="badge bg-primary-lt text-primary" style="display:none"></span>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Tarefa</th>
+              <th>Status</th>
+              <th>Início</th>
+            </tr>
+          </thead>
+          <tbody id="live-tbody">
+            <tr><td colspan="4" class="empty-state">Nenhuma execução ativa</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Próximos agendamentos</div>
+          <div class="text-secondary small">Agenda ativa ordenada pela próxima execução.</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Próxima execução</th>
+            </tr>
+          </thead>
+          <tbody id="sched-tbody">
+            <tr><td colspan="2" class="empty-state">Nenhum agendamento ativo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+import { apiJson } from "/static/js/app.js";
+import { statusBadge } from "/static/js/components/badge.js";
+
+const API = "/api";
+
+async function refresh() {
+  try {
+    const [liveData, schedData, histData] = await Promise.all([
+      apiJson(`${API}/runs/live`),
+      apiJson(`${API}/schedules`),
+      apiJson(`${API}/runs/history?limit=200`),
+    ]);
+
+    const { runs: live } = liveData;
+    const { schedules } = schedData;
+    const { runs: hist } = histData;
+
+    document.getElementById("kpi-running").textContent = live.length;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const todayHist = hist.filter((r) => (r.started_at || "").startsWith(today));
+    document.getElementById("kpi-success").textContent = todayHist.filter((r) => r.status === "success").length;
+    document.getElementById("kpi-error").textContent = todayHist.filter((r) => r.status === "error").length;
+    document.getElementById("kpi-scheds").textContent = schedules.filter((s) => s.enabled).length;
+
+    const liveBadge = document.getElementById("live-badge");
+    liveBadge.style.display = live.length ? "" : "none";
+    liveBadge.textContent = live.length;
+
+    const liveTbody = document.getElementById("live-tbody");
+    liveTbody.innerHTML = live.length
+      ? live.map((r) => `<tr>
+          <td class="font-data">${r.run_id}</td>
+          <td>${r.task_name}</td>
+          <td>${statusBadge(r.status).outerHTML}</td>
+          <td class="font-data">${(r.started_at || "").slice(11, 19)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="4" class="empty-state">Nenhuma execução ativa</td></tr>`;
+
+    const sorted = [...schedules]
+      .filter((s) => s.enabled && s.next_run_at)
+      .sort((a, b) => (a.next_run_at > b.next_run_at ? 1 : -1))
+      .slice(0, 10);
+
+    document.getElementById("sched-tbody").innerHTML = sorted.length
+      ? sorted.map((s) => `<tr>
+          <td>${s.label}</td>
+          <td class="font-data">${s.next_run_label ?? s.next_run_at ?? "—"}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="2" class="empty-state">Nenhum agendamento ativo</td></tr>`;
+  } catch (err) {
+    console.error("Erro ao carregar painel:", err);
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+{% endblock %}

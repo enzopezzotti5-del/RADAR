@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.tools/
 dist
 dist-ssr
 dev-dist
@@ -67,6 +68,25 @@ pocketbase/
 # Python
 __pycache__/
 *.py[cod]
+
+# Browser profiles, downloaded artifacts and operational state are never source.
+core/downloaders/**/chrome_profiles/
+core/downloaders/**/_test_profiles/
+core/downloaders/**/downloads_temp*/
+core/downloaders/**/downloads/
+core/downloaders/**/temp*/
+
+# Only the consolidated Radar launcher is maintained here; historical utility
+# scripts are runtime support files and remain outside the source index.
+/scripts/*
+!/scripts/start_radar.ps1
+
+# Runtime evidence retained locally, never committed with the application code.
+/core/**
+!/core/
+!/core/**/*.py
+/radar_v2/frontend_handoff/
+/radar_v2/workers/
 
 # Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
 core.[0-9]*

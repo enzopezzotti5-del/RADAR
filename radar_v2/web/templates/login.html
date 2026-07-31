@@ -1,0 +1,89 @@
+{% extends "auth_base.html" %}
+{% block title %}Acesso - Radar V2{% endblock %}
+
+{% block content %}
+<section class="auth-panel">
+  <div class="auth-card card">
+    <div class="auth-brand">
+      <img src="{{ url_for('static', filename='brand/radar_logo_horizontal_dark.png') }}" alt="Radar V2" class="auth-brand__logo brand-logo brand-logo-light">
+      <img src="{{ url_for('static', filename='brand/radar_logo_horizontal_light.png') }}" alt="Radar V2" class="auth-brand__logo brand-logo brand-logo-dark">
+    </div>
+
+    <div class="auth-copy">
+      <h1 class="auth-title">Acesso ao Radar</h1>
+      <p class="auth-subtitle">Entre para acessar a operação e o monitoramento.</p>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger auth-error" role="alert" aria-live="polite">{{ error }}</div>
+    {% else %}
+    <div class="auth-hint">Autenticação provisória para o Radar V2.</div>
+    {% endif %}
+
+    <form class="auth-form" action="{{ url_for('login', next=next_path) }}" method="post" novalidate>
+      <input type="hidden" name="next" value="{{ next_path }}">
+      <div class="form-group">
+        <label class="form-label" for="username">Usuário</label>
+        <div class="auth-input-wrap">
+          <span class="auth-input-icon" aria-hidden="true">👤</span>
+          <input
+            id="username"
+            class="form-control auth-input"
+            type="text"
+            name="username"
+            autocomplete="username"
+            required
+            autofocus
+            placeholder="Seu usuário"
+          >
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Senha</label>
+        <div class="auth-input-wrap">
+          <span class="auth-input-icon" aria-hidden="true">🔒</span>
+          <input
+            id="password"
+            class="form-control auth-input"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            placeholder="Sua senha"
+          >
+          <button
+            class="auth-password-toggle"
+            type="button"
+            id="togglePassword"
+            aria-label="Mostrar senha"
+            aria-pressed="false"
+          >👁</button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary w-100 auth-submit" type="submit">Entrar</button>
+    </form>
+
+    <div class="auth-footer">Radar V2 · Ação Engenharia</div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const input = document.getElementById("password");
+    const button = document.getElementById("togglePassword");
+    if (!input || !button) return;
+    button.addEventListener("click", () => {
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      button.setAttribute("aria-pressed", isPassword ? "true" : "false");
+      button.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
+      button.textContent = isPassword ? "🙈" : "👁";
+      input.focus();
+    });
+  })();
+</script>
+{% endblock %}

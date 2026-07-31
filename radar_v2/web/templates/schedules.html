@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Agendamentos{% endblock %}
+{% block page_title %}Agendamentos{% endblock %}
+{% block breadcrumb %}Operação{% endblock %}
+{% block header_subtitle %}Presets operacionais, edição rápida e criação de rotinas de execução.{% endblock %}
+
+{% block topbar_actions %}
+<span id="sched-active-count" class="badge bg-success-lt text-success"></span>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Presets rápidos</div>
+          <div class="text-secondary small">Atalhos para configurar conjuntos recorrentes de agendamentos.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex gap-2 flex-wrap">
+          <button id="btn-preset-neo" class="btn btn-outline-primary" type="button">Neoenergia 21h</button>
+          <button id="btn-preset-celesc" class="btn btn-outline-primary" type="button">CELESC Pipelines</button>
+          <button id="btn-preset-light" class="btn btn-outline-primary" type="button">LIGHT Madrugada</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Agendamentos configurados</div>
+          <div class="text-secondary small">Lista consolidada com status e próxima execução.</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Categoria</th>
+              <th>Frequência</th>
+              <th>Horário</th>
+              <th>Próxima execução</th>
+              <th>Último disparo</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="schedules-body">
+            <tr><td colspan="7" class="empty-state">Carregando agendamentos…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Novo agendamento</div>
+          <div class="text-secondary small">Cadastre uma recorrência manualmente a partir de um pipeline existente.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form id="sched-form" class="form-fields">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="sched-task">Tarefa *</label>
+              <select id="sched-task" class="form-select">
+                <option value="">Selecione…</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sched-label">Label (opcional)</label>
+              <input id="sched-label" class="form-input" type="text" placeholder="Nome do agendamento">
+            </div>
+          </div>
+
+          <div class="form-row form-row--3">
+            <div class="form-group">
+              <label class="form-label" for="sched-freq">Frequência</label>
+              <select id="sched-freq" class="form-select">
+                <option value="daily">Diário</option>
+                <option value="weekly">Semanal</option>
+                <option value="monthly">Mensal</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sched-time">Horário *</label>
+              <input id="sched-time" class="form-input" type="time" value="08:00" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sched-dow">Dia da semana</label>
+              <select id="sched-dow" class="form-select">
+                <option value="">—</option>
+                <option value="0">Segunda</option>
+                <option value="1">Terça</option>
+                <option value="2">Quarta</option>
+                <option value="3">Quinta</option>
+                <option value="4">Sexta</option>
+                <option value="5">Sábado</option>
+                <option value="6">Domingo</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row form-row--3">
+            <div class="form-group">
+              <label class="form-label" for="sched-dom">Dia do mês</label>
+              <input id="sched-dom" class="form-input" type="number" min="1" max="28" placeholder="1–28">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sched-month">Mês fixo</label>
+              <input id="sched-month" class="form-input" type="text" maxlength="2" placeholder="MM">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sched-year">Ano fixo</label>
+              <input id="sched-year" class="form-input" type="text" maxlength="4" placeholder="AAAA">
+            </div>
+          </div>
+
+          <label class="d-flex align-items-center gap-2 text-secondary small">
+            <input id="sched-current-date" type="checkbox" checked>
+            Usar data corrente ao disparar
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Criar agendamento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module" src="{{ url_for('static', filename='js/pages/schedules.js') }}"></script>
+{% endblock %}

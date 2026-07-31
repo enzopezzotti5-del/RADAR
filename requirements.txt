@@ -1,0 +1,58 @@
+# ── Core OCR / PDF ────────────────────────────────────────────────────────────
+pdfplumber==0.11.9
+pdfminer.six==20251230
+pikepdf==10.5.1
+pillow==12.1.1
+lxml==6.0.2
+
+# ── Automação web / Selenium ──────────────────────────────────────────────────
+selenium==4.41.0
+undetected-chromedriver==3.5.5
+webdriver-manager==4.0.2
+playwright==1.61.0
+patchright==1.61.2
+
+# ── Dados / planilhas ─────────────────────────────────────────────────────────
+pandas==3.0.1
+openpyxl==3.1.5
+numpy==2.4.4
+xlsx2html==0.6.4
+
+# ── HTTP / scraping ───────────────────────────────────────────────────────────
+requests==2.33.1
+httpx==0.28.1
+curl_cffi==0.14.0
+beautifulsoup4==4.14.3
+google-api-python-client==2.179.0
+google-auth==2.40.3
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.2
+
+# ── Web apps (Jesus App / Radar) ──────────────────────────────────────────────
+Flask==3.1.3
+fastapi==0.135.3
+uvicorn==0.44.0
+waitress==3.0.2
+Jinja2==3.1.6
+
+# ── Logging / Validação ───────────────────────────────────────────────────────
+loguru==0.7.3
+pydantic==2.12.5
+
+# ── Utilitários ───────────────────────────────────────────────────────────────
+python-dotenv==1.2.2
+filelock==3.25.2
+schedule==1.2.2
+APScheduler==3.10.4
+watchfiles==1.1.1
+python-dateutil==2.9.0.post0
+pytz==2026.1.post1
+pywin32==311
+colorama==0.4.6
+ftfy==6.3.1
+
+# ── CAPTCHA ───────────────────────────────────────────────────────────────────
+2captcha-python==2.0.6
+
+# ── Testes ────────────────────────────────────────────────────────────────────
+pytest==9.0.3

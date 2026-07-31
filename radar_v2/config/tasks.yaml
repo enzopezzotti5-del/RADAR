@@ -1,0 +1,288 @@
+# Catálogo declarativo de tasks — fonte única de verdade.
+# Editar aqui; não tocar em código Python para adicionar/remover tasks.
+#
+# Campos opcionais omitidos assumem:
+#   supports_* : false
+#   default_type: ambos
+#   extra_args: []
+#   notes: ""
+#   pasta_template: ""
+#   download_condition_options: []
+
+tasks:
+
+  # ── Downloaders ──────────────────────────────────────────────────────────────
+
+  - task_id: dl_cpfl_bt
+    name: "Downloader CPFL BT"
+    category: Downloaders
+    script: core/downloaders/cpfl/cpfl_rge.py
+    extra_args: ["--perfil", "bt", "--lote"]
+    notes: "Percorre todos os titulares BT da conta CPFL (Denise) e baixa as faturas do mês."
+
+  - task_id: dl_cpfl_mt
+    name: "Downloader CPFL MT"
+    category: Downloaders
+    script: core/downloaders/cpfl/cpfl_rge_mt.py
+    extra_args: ["--perfil", "mt", "--lote"]
+
+  - task_id: dl_rge_bt
+    name: "Downloader RGE BT"
+    category: Downloaders
+    script: core/downloaders/cpfl/cpfl_rge.py
+    extra_args: ["--conta", "rge", "--perfil", "bt", "--lote"]
+
+  - task_id: dl_cemig
+    name: "Downloader CEMIG"
+    category: Downloaders
+    script: core/downloaders/cemig/cemig.py
+
+  - task_id: dl_copel_bt
+    name: "Downloader COPEL BT"
+    category: Downloaders
+    script: core/downloaders/copel/copel_bt.py
+
+  - task_id: dl_copel_mt
+    name: "Downloader COPEL MT"
+    category: Downloaders
+    script: core/downloaders/copel/copel_mt.py
+
+  - task_id: dl_neo_coelba
+    name: "Downloader Neoenergia COELBA"
+    category: Downloaders
+    script: core/downloaders/neoenergia/worker_coelba.py
+    download_condition_options: ["a_vencer", "todos", "nao_pagas"]
+
+  - task_id: dl_neo_celpe
+    name: "Downloader Neoenergia CELPE"
+    category: Downloaders
+    script: core/downloaders/neoenergia/worker_celpe.py
+    download_condition_options: ["a_vencer", "todos", "nao_pagas"]
+
+  - task_id: dl_neo_cosern
+    name: "Downloader Neoenergia COSERN"
+    category: Downloaders
+    script: core/downloaders/neoenergia/worker_cosern.py
+    download_condition_options: ["a_vencer", "todos", "nao_pagas"]
+
+  - task_id: dl_neo_ceb
+    name: "Downloader Neoenergia CEB"
+    category: Downloaders
+    script: core/downloaders/neoenergia/worker_ceb.py
+    download_condition_options: ["a_vencer", "todos", "nao_pagas"]
+
+  - task_id: dl_neo_elektro
+    name: "Downloader Neoenergia ELEKTRO"
+    category: Downloaders
+    script: core/downloaders/neoenergia/worker_elektro.py
+    download_condition_options: ["a_vencer", "todos", "nao_pagas"]
+
+  - task_id: dl_enel_sp
+    name: "Downloader ENEL SP"
+    category: Downloaders
+    script: core/downloaders/enel_sp/enel_sp.py
+
+  - task_id: dl_enel_ce
+    name: "Downloader ENEL CE"
+    category: Downloaders
+    script: core/downloaders/enel_ce/enel_ce.py
+
+  - task_id: dl_enel_rj
+    name: "Downloader ENEL RJ"
+    category: Downloaders
+    script: core/downloaders/enel_rj/enel_rj.py
+
+  - task_id: dl_celesc_mt
+    name: "Downloader CELESC MT"
+    category: Downloaders
+    script: core/downloaders/celesc/celesc_mt.py
+    extra_args: ["--baixar-faturas-2026"]
+
+  - task_id: dl_celesc_bt
+    name: "Downloader CELESC BT"
+    category: Downloaders
+    script: core/downloaders/celesc/celesc_bt.py
+    extra_args: ["--baixar-faturas-2026"]
+
+  - task_id: dl_equatorial_go
+    name: "Downloader Equatorial GO"
+    category: Downloaders
+    script: core/downloaders/equatorial_go/equatorial_goias.py
+
+  - task_id: dl_light_rj
+    name: "Downloader Light RJ"
+    category: Downloaders
+    script: core/downloaders/light_rj/_test_login.py
+    notes: "Automatiza o acesso rapido do modal Banco do Brasil antes de continuar o fluxo."
+
+  # ── Pipelines ─────────────────────────────────────────────────────────────────
+
+  - task_id: pl_cpfl_bt
+    name: "Pipeline CPFL BT"
+    category: Pipelines
+    script: core/pipelines/pipeline_cpfl_bt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    pasta_template: '\\10.10.250.21\Energia\ARQUIVOS ENZO\DOWNLOAD CPFL\BT\{mes}-{ano}'
+    default_type: bt
+
+  - task_id: pl_cpfl_mt
+    name: "Pipeline CPFL MT"
+    category: Pipelines
+    script: core/pipelines/pipeline_cpfl_mt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    pasta_template: '\\10.10.250.21\Energia\ARQUIVOS ENZO\DOWNLOAD CPFL\MT\{mes}-{ano}'
+    default_type: mt
+
+  - task_id: pl_celesc
+    name: "Pipeline CELESC Completo"
+    category: Pipelines
+    script: core/pipelines/pipeline_celesc.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: ambos
+
+  - task_id: pl_celesc_bt
+    name: "Pipeline CELESC BT"
+    category: Pipelines
+    script: core/pipelines/pipeline_celesc.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+    extra_args: ["--so-bt"]
+
+  - task_id: pl_celesc_mt
+    name: "Pipeline CELESC MT"
+    category: Pipelines
+    script: core/pipelines/pipeline_celesc.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: mt
+    extra_args: ["--so-mt"]
+
+  - task_id: pl_cemig
+    name: "Pipeline CEMIG Completo"
+    category: Pipelines
+    script: core/pipelines/pipeline_cemig.py
+    supports_month_year: true
+    supports_stage_flags: true
+    default_type: bt
+
+  - task_id: pl_cemig_bt
+    name: "Pipeline CEMIG BT"
+    category: Pipelines
+    script: core/pipelines/pipeline_cemig.py
+    supports_month_year: true
+    supports_stage_flags: true
+    default_type: bt
+    extra_args: ["--so-bt"]
+
+  - task_id: pl_cemig_mt
+    name: "Pipeline CEMIG MT"
+    category: Pipelines
+    script: core/pipelines/pipeline_cemig.py
+    supports_month_year: true
+    supports_stage_flags: true
+    default_type: mt
+    extra_args: ["--so-mt"]
+
+  - task_id: pl_copel_bt
+    name: "Pipeline COPEL BT"
+    category: Pipelines
+    script: core/pipelines/pipeline_copel_bt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+
+  - task_id: pl_copel_mt
+    name: "Pipeline COPEL MT"
+    category: Pipelines
+    script: core/pipelines/pipeline_copel_mt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: mt
+
+  - task_id: pl_enel
+    name: "Pipeline ENEL"
+    category: Pipelines
+    script: core/pipelines/pipeline_enel.py
+    supports_month_year: true
+    supports_type: true
+    supports_stage_flags: true
+    default_type: bt
+
+  - task_id: pl_equatorial_go
+    name: "Pipeline Equatorial GO"
+    category: Pipelines
+    script: core/pipelines/pipeline_equatorial_go.py
+    supports_month_year: true
+    supports_stage_flags: true
+    default_type: ambos
+
+  - task_id: pl_neo_bahia
+    name: "Pipeline Neoenergia Bahia"
+    category: Pipelines
+    script: core/pipelines/pipeline_neoenergia_bahia.py
+    supports_month_year: true
+    supports_type: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+
+  - task_id: pl_neo_pernambuco
+    name: "Pipeline Neoenergia Pernambuco"
+    category: Pipelines
+    script: core/pipelines/pipeline_neoenergia_pernambuco.py
+    supports_month_year: true
+    supports_type: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+
+  - task_id: pl_neo_cosern
+    name: "Pipeline Neoenergia COSERN"
+    category: Pipelines
+    script: core/pipelines/pipeline_neoenergia_cosern.py
+    supports_month_year: true
+    supports_type: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+
+  - task_id: pl_neo_elektro
+    name: "Pipeline Neoenergia Elektro"
+    category: Pipelines
+    script: core/pipelines/pipeline_neoenergia_elektro.py
+    supports_month_year: true
+    supports_type: true
+    supports_stage_flags: true
+    supports_pasta: true
+    default_type: bt
+
+  - task_id: pl_light_bt
+    name: "Pipeline Light RJ BT"
+    category: Pipelines
+    script: core/pipelines/pipeline_light_bt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    pasta_template: '\\10.10.250.21\Energia\ARQUIVOS ENZO\DOWNLOAD LIGHT\{mes}-{ano}'
+    default_type: bt
+
+  - task_id: pl_light_mt
+    name: "Pipeline Light RJ MT"
+    category: Pipelines
+    script: core/pipelines/pipeline_light_mt.py
+    supports_month_year: true
+    supports_stage_flags: true
+    supports_pasta: true
+    pasta_template: '\\10.10.250.21\Energia\ARQUIVOS ENZO\DOWNLOAD LIGHT\{mes}-{ano}'
+    default_type: mt

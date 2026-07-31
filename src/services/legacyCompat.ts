@@ -31,6 +31,28 @@ async function radarRead<T>(path: string): Promise<T> {
   return payload as T
 }
 
+async function radarWrite<T>(path: string, method: 'POST' | 'DELETE', body?: unknown): Promise<T> {
+  if (readOnly) {
+    throw new Error('Modo somente leitura: esta acao nao pode ser enviada ao Radar operacional.')
+  }
+  const response = await fetch(readUrl(path), {
+    method,
+    credentials: 'include',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  let payload: any = null
+  try {
+    payload = await response.json()
+  } catch {
+    payload = null
+  }
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || payload?.erro || `Falha ao atualizar Radar: ${response.status}`)
+  }
+  return payload as T
+}
+
 export async function radarSessionIsAuthenticated(): Promise<boolean> {
   const response = await fetch(readUrl('/tasks'), { credentials: 'include' })
   return response.ok
@@ -308,12 +330,14 @@ export async function getCompatSchedules(): Promise<LegacyCompatSchedule[]> {
   })
 }
 
-export async function startCompatExecution(): Promise<never> { throw new Error('Modo somente leitura: iniciar execucoes esta bloqueado.') }
-export async function stopCompatExecution(): Promise<never> { throw new Error('Modo somente leitura: parar execucoes esta bloqueado.') }
-export async function createFlaskSchedule(): Promise<never> { throw new Error('Modo somente leitura: alterar agendamentos esta bloqueado.') }
-export async function updateFlaskSchedule(): Promise<never> { throw new Error('Modo somente leitura: alterar agendamentos esta bloqueado.') }
-export async function toggleFlaskSchedule(): Promise<never> { throw new Error('Modo somente leitura: alterar agendamentos esta bloqueado.') }
-export async function deleteFlaskSchedule(): Promise<never> { throw new Error('Modo somente leitura: alterar agendamentos esta bloqueado.') }
+export async function startCompatExecution(taskId: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  return radarWrite('/runs/start', 'POST', { task_id: taskId, ...params })
+}
+export async function stopCompatExecution(runId: string): Promise<unknown> { return radarWrite(`/runs/${encodeURIComponent(runId)}/stop`, 'POST') }
+export async function createFlaskSchedule(payload: Record<string, unknown>): Promise<unknown> { return radarWrite('/schedules', 'POST', payload) }
+export async function updateFlaskSchedule(id: string, payload: Record<string, unknown>): Promise<unknown> { return radarWrite(`/schedules/${encodeURIComponent(id)}`, 'POST', payload) }
+export async function toggleFlaskSchedule(id: string, enabled: boolean): Promise<unknown> { return radarWrite(`/schedules/${encodeURIComponent(id)}/toggle`, 'POST', { enabled }) }
+export async function deleteFlaskSchedule(id: string): Promise<unknown> { return radarWrite(`/schedules/${encodeURIComponent(id)}`, 'DELETE') }
 export async function saveFlaskCatalogTask(): Promise<never> { throw new Error('Modo somente leitura: alterar catalogo esta bloqueado.') }
 export async function deleteFlaskCatalogTask(): Promise<never> { throw new Error('Modo somente leitura: alterar catalogo esta bloqueado.') }
 export async function createCompatSchedule(): Promise<never> { throw new Error('Modo somente leitura: alterar agendamentos esta bloqueado.') }
