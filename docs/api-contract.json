@@ -1,0 +1,36 @@
+{
+  "contract_version": "1.0.0",
+  "provider": "Radar V2 Flask",
+  "base_path": "/api",
+  "authentication": {
+    "login": { "method": "POST", "path": "/login", "content_type": "application/x-www-form-urlencoded", "fields": ["username", "password", "next"] },
+    "logout": { "method": "POST", "path": "/logout" },
+    "session": "Flask session cookie sent with credentials: include"
+  },
+  "endpoints": [
+    { "method": "GET", "path": "/health" },
+    { "method": "GET", "path": "/api/health" },
+    { "method": "GET", "path": "/api/tasks" },
+    { "method": "GET", "path": "/api/dashboard" },
+    { "method": "GET", "path": "/api/runs/live", "query": ["status"] },
+    { "method": "GET", "path": "/api/runs/history", "query": ["limit"] },
+    { "method": "GET", "path": "/api/runs/{run_id}/log", "query": ["after", "max_lines"] },
+    { "method": "GET", "path": "/api/calendar/summary", "query": ["start", "end", "timezone", "utility", "task_id"] },
+    { "method": "GET", "path": "/api/schedules" },
+    { "method": "POST", "path": "/api/runs/start", "body": ["task_id", "month", "year", "selected_type", "stage_flag", "pasta", "download_condition", "extra_text"] },
+    { "method": "POST", "path": "/api/runs/{run_id}/stop" },
+    { "method": "POST", "path": "/api/runs/{run_id}/rerun" },
+    { "method": "POST", "path": "/api/schedules", "body": ["task_id", "label", "frequency", "time_of_day", "day_of_week", "day_of_month", "weekdays", "params"] },
+    { "method": "POST", "path": "/api/schedules/{schedule_id}/toggle", "body": ["enabled"] },
+    { "method": "DELETE", "path": "/api/schedules/{schedule_id}" },
+    { "method": "POST", "path": "/api/schedules/presets/neoenergia-21h" },
+    { "method": "POST", "path": "/api/schedules/presets/celesc-pipelines" }
+  ],
+  "read_only_frontend": {
+    "enabled_by": "VITE_RADAR_READ_ONLY=true",
+    "data_source": "VITE_RADAR_DATA_SOURCE=flask",
+    "api_base": "VITE_RADAR_API_BASE=/api",
+    "blocked_methods": ["POST", "PUT", "PATCH", "DELETE"]
+  },
+  "timezone": "America/Sao_Paulo"
+}
