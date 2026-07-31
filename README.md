@@ -1,6 +1,4 @@
-# Projeto Criado com o Skip
-
-Este projeto foi criado de ponta a ponta com o [Skip](https://goskip.dev).
+# Projeto front-end para Radar - Ação Engenharia
 
 ## 🚀 Stack Tecnológica
 
