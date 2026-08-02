@@ -5,7 +5,7 @@ included in logs or API payloads.
 """
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import os
 import sqlite3
 import tempfile
@@ -79,8 +79,9 @@ def _status_for(issues: Iterable[PreflightIssue]) -> str:
 
 def _module_missing(name: str) -> bool:
     try:
-        return importlib.util.find_spec(name) is None
-    except (ImportError, AttributeError, ValueError):
+        importlib.import_module(name)
+        return False
+    except Exception:
         return True
 
 
