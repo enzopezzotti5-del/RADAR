@@ -11,7 +11,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     # Os módulos importam estes caminhos como constantes; isolar antes de criar
     # a app impede qualquer leitura/escrita no history.sqlite3 operacional.
     from radar_v2.app.repositories import storage
-    from radar_v2.app.services import run_service
+    from radar_v2.app.services import preflight_service, run_service
 
     data_dir = tmp_path / "web_app"
     monkeypatch.setenv("RADAR_V2_SCHEDULER_ENABLED", "false")
@@ -21,6 +21,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(storage, "LEGACY_DB", tmp_path / "legacy.sqlite3")
     monkeypatch.setattr(run_service, "APP_DATA_DIR", data_dir)
     monkeypatch.setattr(run_service, "RUN_LOG_DIR", data_dir / "run_logs")
+    monkeypatch.setattr(preflight_service, "PROJECT_ROOT", tmp_path)
 
     from radar_v2.app.api.server import REACT_DIST, create_app
 
@@ -39,7 +40,7 @@ def test_public_shell_and_assets(client):
     assert "javascript" in response.content_type
 
 
-@pytest.mark.parametrize("path", ["/api/tasks", "/api/runs/history", "/api/schedules"])
+@pytest.mark.parametrize("path", ["/api/tasks", "/api/preflight", "/api/runs/history", "/api/schedules"])
 def test_private_api_requires_session(client, path):
     assert client.get(path).status_code == 401
 
