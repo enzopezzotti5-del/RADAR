@@ -65,6 +65,14 @@ def test_missing_library_blocks_task(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert [issue.requirement for issue in result.issues] == ["pandas"]
 
 
+def test_library_check_imports_module_instead_of_only_locating_it(monkeypatch: pytest.MonkeyPatch):
+    def broken_import(name: str):
+        raise ModuleNotFoundError("transitive binary missing", name="_cffi_backend")
+
+    monkeypatch.setattr(preflight_service.importlib, "import_module", broken_import)
+    assert preflight_service._module_missing("cryptography") is True
+
+
 def test_missing_entrypoint_has_explicit_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     python = tmp_path / ".venv" / "Scripts" / "python.exe"
     python.parent.mkdir(parents=True)
