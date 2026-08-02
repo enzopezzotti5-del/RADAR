@@ -171,7 +171,7 @@ class RunService:
     def launch(self, task_id: str, task_name: str, category: str,
                args: list[str], *, allow_parallel: bool = False) -> LiveRun:
         if self._preflight is not None:
-            result = self._preflight.check_task_id(task_id)
+            result = self._preflight.check_task_id(task_id, args=args)
             if not result.ready:
                 raise TaskPreflightError(task_id, result)
         args = build_session_command(list(args))

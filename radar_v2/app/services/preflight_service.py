@@ -169,7 +169,30 @@ class PreflightService:
                 return modules
         return ()
 
-    def check_task(self, task) -> PreflightResult:
+    @staticmethod
+    def _argument_value(args: list[str] | None, option: str) -> str | None:
+        if not args:
+            return None
+        try:
+            index = args.index(option)
+        except ValueError:
+            return None
+        return args[index + 1] if index + 1 < len(args) else None
+
+    def _dynamic_input_dir(self, task_id: str, args: list[str] | None) -> Path | None:
+        if task_id not in {"pl_copel_bt", "pl_copel_mt"} or not args:
+            return None
+        explicit = self._argument_value(args, "--pasta")
+        if explicit:
+            return Path(explicit)
+        month = self._argument_value(args, "--mes")
+        year = self._argument_value(args, "--ano")
+        if not month or not year:
+            return None
+        voltage = "BT" if task_id.endswith("_bt") else "MT"
+        return Path(r"\\10.10.250.21\Energia\ARQUIVOS ENZO\DOWNLOAD COPEL") / f"{month}.{year}" / voltage
+
+    def check_task(self, task, args: list[str] | None = None) -> PreflightResult:
         issues: list[PreflightIssue] = []
         if task.task_id in _operator_blocked_tasks():
             issues.append(PreflightIssue(
@@ -193,9 +216,15 @@ class PreflightService:
         if task.task_id.startswith("dl_") and _browser_path() is None:
             issues.append(PreflightIssue("BLOCKED_BROWSER", "chrome_or_edge", "browser nao encontrado"))
 
+        input_dir = self._dynamic_input_dir(task.task_id, args)
+        if input_dir is not None and not input_dir.is_dir():
+            issues.append(PreflightIssue(
+                "BLOCKED_MISSING_FILE", "pipeline_input_dir", str(input_dir),
+            ))
+
         return PreflightResult(status=_status_for(issues), issues=tuple(issues))
 
-    def check_task_id(self, task_id: str) -> PreflightResult:
+    def check_task_id(self, task_id: str, args: list[str] | None = None) -> PreflightResult:
         if self.catalog is None:
             report = self.global_report()
             issues = tuple(PreflightIssue(**issue) for issue in report["issues"])
@@ -204,7 +233,7 @@ class PreflightService:
         if task is None:
             issue = PreflightIssue("BLOCKED_OTHER", "task_catalog", f"task_id desconhecido: {task_id}")
             return PreflightResult(status=issue.code, issues=(issue,))
-        return self.check_task(task)
+        return self.check_task(task, args=args)
 
     def all_tasks_report(self) -> dict[str, dict]:
         if self.catalog is None:
