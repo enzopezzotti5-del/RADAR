@@ -95,6 +95,11 @@ def _browser_path() -> Path | None:
     return next((path for path in candidates if path.is_file()), None)
 
 
+def _operator_blocked_tasks() -> set[str]:
+    raw = os.environ.get("RADAR_V2_BLOCKED_TASKS", "")
+    return {value.strip() for value in raw.split(",") if value.strip()}
+
+
 def _check_writable(directory: Path) -> bool:
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -166,6 +171,11 @@ class PreflightService:
 
     def check_task(self, task) -> PreflightResult:
         issues: list[PreflightIssue] = []
+        if task.task_id in _operator_blocked_tasks():
+            issues.append(PreflightIssue(
+                "BLOCKED_OTHER", "operator_block",
+                "tarefa bloqueada explicitamente em RADAR_V2_BLOCKED_TASKS",
+            ))
         script = Path(task.script)
         if not script.is_absolute():
             script = self.project_root / script
