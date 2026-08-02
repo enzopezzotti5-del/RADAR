@@ -120,6 +120,41 @@ def test_operator_can_block_known_bad_task_without_blocking_global_scheduler(tmp
     assert result.issues[0].requirement == "operator_block"
 
 
+def test_copel_pipeline_missing_month_directory_is_blocked_before_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    script = tmp_path / "pipeline.py"
+    script.touch()
+    monkeypatch.setattr(preflight_service, "_module_missing", lambda _name: False)
+    task = SimpleNamespace(task_id="pl_copel_bt", script="pipeline.py")
+    service = PreflightService(project_root=tmp_path)
+    missing = tmp_path / "08.2026" / "BT"
+    args = [str(python), "-m", "pipeline", "--mes", "08", "--ano", "2026", "--pasta", str(missing)]
+
+    result = service.check_task(task, args=args)
+
+    assert result.status == "BLOCKED_MISSING_FILE"
+    assert result.issues[0].requirement == "pipeline_input_dir"
+
+
+def test_copel_pipeline_existing_explicit_directory_is_ready(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    script = tmp_path / "pipeline.py"
+    script.touch()
+    input_dir = tmp_path / "07.2026" / "BT"
+    input_dir.mkdir(parents=True)
+    monkeypatch.setattr(preflight_service, "_module_missing", lambda _name: False)
+    task = SimpleNamespace(task_id="pl_copel_bt", script="pipeline.py")
+    args = [str(python), "-m", "pipeline", "--pasta", str(input_dir)]
+
+    result = PreflightService(project_root=tmp_path).check_task(task, args=args)
+
+    assert result.status == "READY"
+
+
 def test_scheduler_defers_preflight_failure_without_launch(monkeypatch: pytest.MonkeyPatch):
     from radar_v2.app.services import schedule_service
 
