@@ -104,6 +104,22 @@ def test_missing_required_environment_is_reported_by_name_only(tmp_path: Path, m
     assert report["missing_required_keys"] == ["RADAR_V2_SECRET_KEY"]
 
 
+def test_operator_can_block_known_bad_task_without_blocking_global_scheduler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    script = tmp_path / "light.py"
+    script.touch()
+    monkeypatch.setenv("RADAR_V2_BLOCKED_TASKS", "dl_light_rj")
+    monkeypatch.setattr(preflight_service, "_browser_path", lambda: tmp_path / "chrome.exe")
+    monkeypatch.setattr(preflight_service, "_module_missing", lambda _name: False)
+    task = SimpleNamespace(task_id="dl_light_rj", script="light.py")
+
+    result = PreflightService(project_root=tmp_path).check_task(task)
+    assert result.status == "BLOCKED_OTHER"
+    assert result.issues[0].requirement == "operator_block"
+
+
 def test_scheduler_defers_preflight_failure_without_launch(monkeypatch: pytest.MonkeyPatch):
     from radar_v2.app.services import schedule_service
 
