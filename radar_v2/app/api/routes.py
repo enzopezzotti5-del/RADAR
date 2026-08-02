@@ -16,6 +16,7 @@ bp = Blueprint("api_v2", __name__, url_prefix="/api")
 def _run()  : return current_app.extensions["run_service"]
 def _cat()  : return current_app.extensions["task_catalog"]
 def _sched(): return current_app.extensions["schedule_service"]
+def _preflight(): return current_app.extensions["preflight_service"]
 
 
 # ── health ────────────────────────────────────────────────────────────────────
@@ -40,6 +41,16 @@ def list_tasks():
         grp: [cat.to_dict(t) for t in tasks]
         for grp, tasks in cat.by_category().items()
     }})
+
+
+@bp.get("/preflight")
+def preflight_status():
+    service = _preflight()
+    return jsonify({
+        "ok": True,
+        "global": service.global_report(),
+        "tasks": service.all_tasks_report(),
+    })
 
 
 # ── runs ──────────────────────────────────────────────────────────────────────

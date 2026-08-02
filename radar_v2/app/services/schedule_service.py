@@ -13,6 +13,7 @@ import threading
 import time
 
 from ..repositories.storage import (
+    defer_schedule_after_preflight,
     list_schedules,
     update_schedule_after_run,
     upsert_schedule,
@@ -20,6 +21,7 @@ from ..repositories.storage import (
     delete_schedule as _delete_by_id,
 )
 from .run_service import RunConflictError
+from .preflight_service import TaskPreflightError
 
 log = logging.getLogger("radar_v2.scheduler")
 
@@ -83,6 +85,13 @@ class ScheduleService:
             fired = True
         except RunConflictError as exc:
             log.warning("Schedule %s aguardando janela livre: %s", sched.get("id"), exc)
+        except TaskPreflightError as exc:
+            log.error(
+                "PREFLIGHT_BLOCKED schedule=%s task=%s status=%s requirements=%s",
+                sched.get("id"), sched.get("task_id"), exc.result.status,
+                [issue.requirement for issue in exc.result.issues],
+            )
+            defer_schedule_after_preflight(sched["id"])
         except Exception:
             log.exception("Falha ao disparar schedule %s (%s)", sched.get("id"), sched.get("task_id"))
 

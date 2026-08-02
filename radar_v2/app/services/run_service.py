@@ -37,6 +37,7 @@ from ..repositories.storage import (
     list_runs,
     save_run_log,
 )
+from .preflight_service import ENV_FILE, REQUIRED_ENV_KEYS, TaskPreflightError
 
 ROOT_DIR    = Path(__file__).resolve().parent.parent.parent.parent
 RUN_LOG_DIR = APP_DATA_DIR / "run_logs"
@@ -87,9 +88,10 @@ class LiveRun:
 
 class RunService:
 
-    def __init__(self) -> None:
+    def __init__(self, preflight=None) -> None:
         self._lock = threading.RLock()
         self._live: dict[int, LiveRun] = {}
+        self._preflight = preflight
         RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
         self._prune_log_files()
         try:
@@ -120,6 +122,11 @@ class RunService:
                    stage_flag: str, pasta: str, download_condition: str,
                    extra_text: str) -> tuple:
         """Retorna (task, args_list, label)."""
+        if self._preflight is not None:
+            result = self._preflight.check_task(task)
+            if not result.ready:
+                raise TaskPreflightError(task.task_id, result)
+
         abs_script = Path(task.script)
         if not abs_script.is_absolute():
             abs_script = ROOT_DIR / abs_script
@@ -163,6 +170,10 @@ class RunService:
 
     def launch(self, task_id: str, task_name: str, category: str,
                args: list[str], *, allow_parallel: bool = False) -> LiveRun:
+        if self._preflight is not None:
+            result = self._preflight.check_task_id(task_id)
+            if not result.ready:
+                raise TaskPreflightError(task_id, result)
         args = build_session_command(list(args))
         command = subprocess.list2cmdline(args)
         sig     = command
@@ -202,9 +213,16 @@ class RunService:
             except Exception:
                 pass
 
+            child_env = self._env(script_dir)
+            metrics_file = RUN_LOG_DIR / f"run_{run_id}_metrics.jsonl"
+            child_env.update({
+                "RADAR_RUN_ID": str(run_id),
+                "RADAR_TASK_ID": task_id,
+                "RADAR_METRICS_FILE": str(metrics_file),
+            })
             flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             proc = subprocess.Popen(
-                args, cwd=ROOT_DIR, env=self._env(script_dir),
+                args, cwd=ROOT_DIR, env=child_env,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace",
                 bufsize=1, creationflags=flags,
@@ -218,6 +236,20 @@ class RunService:
 
         self._reset_log(run_id)
         self._append_log(run_id, f"[START] {command}")
+        entrypoint = " ".join(args[1:3]) if len(args) > 2 and args[1] == "-m" else (args[1] if len(args) > 1 else "")
+        env_available = sum(1 for key in REQUIRED_ENV_KEYS if child_env.get(key))
+        for context_line in (
+            f"[CONTEXT] RUN_ID={run_id}",
+            f"[CONTEXT] TASK_ID={task_id}",
+            f"[CONTEXT] ENTRYPOINT={entrypoint}",
+            f"[CONTEXT] PYTHON={args[0] if args else ''}",
+            f"[CONTEXT] CWD={ROOT_DIR}",
+            f"[CONTEXT] ENV_FILE={ENV_FILE}",
+            f"[CONTEXT] ENV_KEYS_AVAILABLE={env_available}/{len(REQUIRED_ENV_KEYS)}",
+            f"[CONTEXT] RADAR_METRICS_FILE={metrics_file}",
+            f"[CONTEXT] LOG_FILE={RUN_LOG_DIR / f'run_{run_id}.log'}",
+        ):
+            self._append_log(run_id, context_line)
         self._spawn_reader(run_id, proc.stdout, prefix="")
         self._spawn_reader(run_id, proc.stderr, prefix="[ERR] ")
         threading.Thread(target=self._wait, args=(run_id,), daemon=True).start()
@@ -433,6 +465,11 @@ class RunService:
         duration_s  = (finished_at - started_at).total_seconds()
         status = "success" if exit_code == 0 else "error"
         finish_run(run_id, finished_at.strftime("%Y-%m-%d %H:%M:%S"), status, exit_code, duration_s)
+        if exit_code != 0:
+            self._append_log(
+                run_id,
+                f"[FAILURE] TYPE=EXECUTION STAGE=SUBPROCESS EXIT_CODE={exit_code} DURATION={duration_s:.1f}s",
+            )
         self._append_log(run_id, f"[END] exit={exit_code} duração={duration_s:.1f}s")
         try:
             log_text = "\n".join(self._read_log_file(run_id))

@@ -15,7 +15,7 @@ except ImportError:
 BASE_DIR = Path(__file__).parent
 CORE_DIR = BASE_DIR / "core"
 
-PYTHON_EXE = r"C:\Users\Revit\Desktop\ENERGIA\.venv\Scripts\python.exe"
+PYTHON_EXE = str(BASE_DIR / ".venv" / "Scripts" / "python.exe")
 
 SCRIPTS = [
     str(CORE_DIR / "downloaders" / "cemig"         / "cemig.py"),

@@ -258,6 +258,21 @@ def update_schedule_after_run(schedule_id: int, last_run_at: str) -> None:
         conn.commit()
 
 
+def defer_schedule_after_preflight(schedule_id: int) -> None:
+    """Move um schedule bloqueado para a proxima janela sem contar execucao."""
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT frequency, time_of_day, day_of_week, day_of_month FROM schedules WHERE id=?",
+            (schedule_id,),
+        ).fetchone()
+        if row is None:
+            return
+        next_run_at = compute_next_run(row[0], row[1], row[2], row[3])
+        conn.execute("UPDATE schedules SET next_run_at=? WHERE id=?", (next_run_at, schedule_id))
+        conn.commit()
+
+
 def upsert_schedule(*, task_id: str, label: str, task_name: str, category: str,
                     params_json: str, frequency: str, time_of_day: str,
                     day_of_week: int | None, day_of_month: int | None) -> int:

@@ -21,6 +21,7 @@ from ..repositories.storage import ensure_db
 from ..services.run_service import RunService
 from ..services.schedule_service import ScheduleService
 from ..services.task_catalog_service import TaskCatalogService
+from ..services.preflight_service import PreflightService
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "templates"
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "static"
@@ -107,16 +108,33 @@ def create_app() -> Flask:
         )
 
     catalog = TaskCatalogService()
-    run_svc = RunService()
+    preflight = PreflightService(catalog)
+    global_preflight = preflight.global_report()
+    preflight_log = logging.getLogger("radar_v2.preflight")
+    preflight_log.info("ENV_FILE_LOADED: %s", global_preflight["env_file_loaded"])
+    preflight_log.info(
+        "ENV_KEYS_AVAILABLE: %s/%s",
+        global_preflight["env_keys_available"], global_preflight["env_keys_required"],
+    )
+    preflight_log.info("MISSING_REQUIRED_KEYS: %s", global_preflight["missing_required_keys"])
+    preflight_log.info("GLOBAL_PREFLIGHT: %s", global_preflight["status"])
+
+    run_svc = RunService(preflight)
     sched_svc = ScheduleService(run_svc, catalog)
-    if _env_bool("RADAR_V2_SCHEDULER_ENABLED", True):
+    if _env_bool("RADAR_V2_SCHEDULER_ENABLED", True) and global_preflight["status"] == "READY":
         sched_svc.start()
+    elif global_preflight["status"] != "READY":
+        logging.getLogger(__name__).error(
+            "Radar V2 scheduler bloqueado pelo preflight: %s",
+            [issue["requirement"] for issue in global_preflight["issues"]],
+        )
     else:
         logging.getLogger(__name__).info("Radar V2 scheduler desativado por ambiente.")
 
     app.extensions["run_service"] = run_svc
     app.extensions["task_catalog"] = catalog
     app.extensions["schedule_service"] = sched_svc
+    app.extensions["preflight_service"] = preflight
     app.extensions["react_dist"] = REACT_DIST
 
     app.register_blueprint(api_bp)
