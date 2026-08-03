@@ -73,6 +73,15 @@ else:
     print("[master] indice_master.py não encontrado — modo local")
 
 
+try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_outcome
+    def _emit_metric(outcome: str, *, uc: str, ref: str, belnr: str) -> None:
+        _emit_outcome(outcome, utility="ENEL SP", account_id=uc, competence=ref, invoice_id=belnr)
+except Exception:
+    def _emit_metric(outcome: str, *, uc: str, ref: str, belnr: str) -> None:  # type: ignore[misc]
+        pass
+
+
 class EnelDownloaderArquivista:
     def __init__(self, email: str, password: str, api_key: str, cookies: str, user_agent: str, root_dir: str):
         self.email = email
@@ -789,6 +798,7 @@ class EnelDownloaderArquivista:
         if chave_ref in self.memoria_download and not ignorar_indice:
             self._marcar_status_busca(uc_original, "JA_NO_INDICE", ref)
             self.log(f"Fatura {ref} já consta no índice.", "SKIP")
+            _emit_metric("skipped_existing", uc=uc_portal, ref=ref, belnr=belnr)
             return True
 
         if chave_ref in self.memoria_download and ignorar_indice:
@@ -797,9 +807,12 @@ class EnelDownloaderArquivista:
         if belnr in self._belnrs_historicos and not ignorar_indice:
             self._marcar_status_busca(uc_original, "JA_NO_INDICE", ref)
             self.log(f"BELNR {belnr} já registrado no índice (histórico). Pulando.", "SKIP")
+            _emit_metric("skipped_existing", uc=uc_portal, ref=ref, belnr=belnr)
             return True
 
         if belnr in self.faturas_baixadas:
+            # Duplicata intra-run: downloaded já foi emitido para este belnr neste run.
+            # Não emitir nada para não sobrescrever o outcome confirmado.
             self._registrar_duplicada_execucao(uc_original, ref, belnr)
             return True
 
@@ -833,6 +846,7 @@ class EnelDownloaderArquivista:
 
         self.qtd_baixadas_hoje += 1
         self.duplicadas_consecutivas = 0
+        _emit_metric("downloaded", uc=uc_portal, ref=ref, belnr=belnr)
         return carimbo, filepath, classificacao
 
     def _baixar_fatura_via_navegador_seguro(

@@ -51,6 +51,20 @@ ROOT_LOCAL = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_LOCAL))
 import _venv_check  # noqa
 
+try:
+    import os as _os
+    from core.metrics.radar_metrics import emit_outcome as _emit_cpfl_outcome
+    def _cpfl_utility() -> str:
+        return {"dl_cpfl_bt": "CPFL", "dl_cpfl_mt": "CPFL", "dl_rge_bt": "RGE"}.get(
+            _os.environ.get("RADAR_TASK_ID", ""), "CPFL"
+        )
+    def _emit(outcome: str, *, uc: str, mes_ref: str, carimbo: str = "") -> None:
+        _emit_cpfl_outcome(outcome, utility=_cpfl_utility(), account_id=uc,
+                           competence=mes_ref, invoice_id=carimbo or mes_ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
 
 URL_LOGIN = (
     "https://cpflb2cprd.b2clogin.com/cpflb2cprd.onmicrosoft.com/"
@@ -2355,9 +2369,11 @@ def processar_uma_uc_lote(
         if not forcar_download:
             if mes_ref and master and master.ja_foi_baixado(uc, mes_ref, "CPFL"):
                 log.info("Ja no master: %s | %s", uc, mes_ref)
+                _emit("skipped_existing", uc=uc, mes_ref=mes_ref)
                 return {"status": "JA_MASTER", "titular": titular.get("text", ""), "uc": uc, "mes_ref": mes_ref}
             if mes_ref and (uc, mes_ref) in baixados:
                 log.info("Ja no indice local: %s | %s", uc, mes_ref)
+                _emit("skipped_existing", uc=uc, mes_ref=mes_ref)
                 return {"status": "JA_LOCAL", "titular": titular.get("text", ""), "uc": uc, "mes_ref": mes_ref}
 
         try:
@@ -2421,9 +2437,11 @@ def processar_uma_uc_lote(
         if not forcar_download:
             if mes_ref and master and master.ja_foi_baixado(uc, mes_ref, "CPFL"):
                 log.info("Ja no master: %s | %s", uc, mes_ref)
+                _emit("skipped_existing", uc=uc, mes_ref=mes_ref)
                 return {"status": "JA_MASTER", "titular": titular.get("text", ""), "uc": uc, "mes_ref": mes_ref}
             if mes_ref and (uc, mes_ref) in baixados:
                 log.info("Ja no indice local: %s | %s", uc, mes_ref)
+                _emit("skipped_existing", uc=uc, mes_ref=mes_ref)
                 return {"status": "JA_LOCAL", "titular": titular.get("text", ""), "uc": uc, "mes_ref": mes_ref}
 
         try:
@@ -2490,6 +2508,8 @@ def processar_uma_uc_lote(
         except Exception as exc:
             log.info("Nao foi possivel fechar janela extra: %s", exc)
 
+    if mes_ref:
+        _emit("downloaded", uc=uc, mes_ref=mes_ref, carimbo=indice_bb)
     return {
         "status": "OK",
         "titular": titular.get("text", ""),

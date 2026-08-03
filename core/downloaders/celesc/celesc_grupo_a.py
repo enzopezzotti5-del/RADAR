@@ -59,6 +59,20 @@ sys.path.insert(0, str(CORE_ROOT))
 import _venv_check  # noqa
 from indice_master import MasterIndice
 
+try:
+    import os as _os
+    from core.metrics.radar_metrics import emit_outcome as _emit_celesc_outcome
+    def _celesc_utility() -> str:
+        return {"dl_celesc_bt": "CELESC BT", "dl_celesc_mt": "CELESC MT"}.get(
+            _os.environ.get("RADAR_TASK_ID", ""), "CELESC BT"
+        )
+    def _emit(outcome: str, *, uc: str, mes_ref: str, carimbo: str = "") -> None:
+        _emit_celesc_outcome(outcome, utility=_celesc_utility(), account_id=uc,
+                             competence=mes_ref, invoice_id=carimbo or mes_ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
 
 URL_PORTAL = "https://conecte.celesc.com.br/"
 URL_LOGIN = "https://conecte.celesc.com.br/autenticacao/login"
@@ -1215,9 +1229,11 @@ def baixar_faturas_2026(
         mes_ref_competencia = fatura.get("mes_ref_competencia", "")
         if not ignorar_ja_baixado and master and master.ja_foi_baixado(uc, mes_ref_competencia, "CELESC"):
             log.info("    Ja no master: %s | %s", uc, mes_ref_competencia)
+            _emit("skipped_existing", uc=uc, mes_ref=mes_ref_competencia)
             continue
         if not ignorar_ja_baixado and indice_local.ja_baixado(uc, mes_ref_competencia):
             log.info("    Ja no indice local: %s | %s", uc, mes_ref_competencia)
+            _emit("skipped_existing", uc=uc, mes_ref=mes_ref_competencia)
             continue
 
         antes = _snapshot_downloads(download_dir)
@@ -1290,6 +1306,7 @@ def baixar_faturas_2026(
                 parceiro_nome=parceiro_nome,
                 arquivo=str(destino_servidor),
             )
+            _emit("downloaded", uc=uc, mes_ref=mes_ref_competencia, carimbo=carimbo)
             log.info("    PDF baixado: %s", final_path.name)
         else:
             log.warning("    Nenhum PDF detectado para %s | %s", fatura.get("mes_ref"), fatura.get("vencimento"))

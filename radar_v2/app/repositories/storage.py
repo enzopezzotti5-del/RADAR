@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 # __file__ = radar_v2/app/repositories/storage.py → .parent×4 = ENERGIA/
@@ -19,6 +20,93 @@ LEGACY_DB    = _ROOT / "logs" / "desktop_app" / "history.sqlite3"
 
 MAX_LOG_CHARS = 200_000
 MAX_LOG_RUNS  = 300
+
+
+# ── metric helpers ────────────────────────────────────────────────────────────
+
+@contextmanager
+def _connection():
+    """Short-lived SQLite connection with FK enforcement and explicit commit."""
+    conn = sqlite3.connect(DB_PATH, timeout=5)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
+def _has_runs_cascade(conn: sqlite3.Connection, table: str) -> bool:
+    return any(
+        row[2] == "runs" and str(row[6]).upper() == "CASCADE"
+        for row in conn.execute(f"PRAGMA foreign_key_list({table})")
+    )
+
+
+def _create_metric_tables(conn: sqlite3.Connection, suffix: str = "") -> None:
+    conn.execute(f"""
+        CREATE TABLE run_metric_items{suffix} (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id        INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+            item_key      TEXT NOT NULL,
+            utility       TEXT NOT NULL,
+            task_id       TEXT NOT NULL,
+            competence    TEXT NOT NULL,
+            outcome       TEXT NOT NULL CHECK(outcome IN ('downloaded','skipped_existing','item_error','other')),
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            UNIQUE(run_id, item_key)
+        )
+    """)
+    conn.execute(f"""
+        CREATE TABLE run_metrics{suffix} (
+            run_id                 INTEGER PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+            utility                TEXT NOT NULL,
+            task_id                TEXT NOT NULL,
+            downloaded_count       INTEGER NOT NULL DEFAULT 0,
+            skipped_existing_count INTEGER NOT NULL DEFAULT 0,
+            item_error_count       INTEGER NOT NULL DEFAULT 0,
+            other_count            INTEGER NOT NULL DEFAULT 0,
+            processed_count        INTEGER NOT NULL DEFAULT 0,
+            metrics_complete       INTEGER NOT NULL DEFAULT 0,
+            metrics_version        INTEGER NOT NULL DEFAULT 1,
+            updated_at             TEXT NOT NULL
+        )
+    """)
+
+
+def _ensure_metric_schema(conn: sqlite3.Connection) -> None:
+    items_exists = _table_exists(conn, "run_metric_items")
+    metrics_exists = _table_exists(conn, "run_metrics")
+    current = (
+        items_exists and metrics_exists
+        and _has_runs_cascade(conn, "run_metric_items")
+        and _has_runs_cascade(conn, "run_metrics")
+    )
+    if not current:
+        _create_metric_tables(conn, "_next")
+        if metrics_exists:
+            conn.execute("INSERT INTO run_metrics_next SELECT * FROM run_metrics")
+        if items_exists:
+            conn.execute("INSERT INTO run_metric_items_next SELECT * FROM run_metric_items")
+        if items_exists:
+            conn.execute("DROP TABLE run_metric_items")
+        if metrics_exists:
+            conn.execute("DROP TABLE run_metrics")
+        conn.execute("ALTER TABLE run_metrics_next RENAME TO run_metrics")
+        conn.execute("ALTER TABLE run_metric_items_next RENAME TO run_metric_items")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_metric_items_run_id ON run_metric_items(run_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_metrics_utility_task ON run_metrics(utility, task_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at)")
 
 
 # ── bootstrap ─────────────────────────────────────────────────────────────────
@@ -71,6 +159,27 @@ def ensure_db() -> None:
                 run_count    INTEGER NOT NULL DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS invoice_run_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                task_id TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                metric_date TEXT NOT NULL,
+                downloaded INTEGER NOT NULL DEFAULT 0 CHECK(downloaded >= 0),
+                processed INTEGER NOT NULL DEFAULT 0 CHECK(processed >= 0),
+                errors INTEGER NOT NULL DEFAULT 0 CHECK(errors >= 0),
+                run_failures INTEGER NOT NULL DEFAULT 0 CHECK(run_failures >= 0),
+                metrics_complete INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'flow',
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                updated_at TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(run_id, task_id, utility)
+            )
+        """)
+        _ensure_metric_schema(conn)
         conn.commit()
 
 
@@ -96,6 +205,255 @@ def finish_run(run_id: int, finished_at: str, status: str, exit_code: int | None
         )
         conn.commit()
 
+
+def upsert_invoice_metric(*, run_id: int, task_id: str, utility: str,
+                          metric_date: str, downloaded: int, processed: int,
+                          errors: int, metrics_complete: bool, source: str,
+                          started_at: str, finished_at: str | None,
+                          details_json: str, updated_at: str) -> None:
+    """Persiste uma métrica final por run/concessionária sem somas duplicadas."""
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT INTO invoice_run_metrics
+            (run_id,task_id,utility,metric_date,downloaded,processed,errors,
+             metrics_complete,source,started_at,finished_at,updated_at,details_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(run_id,task_id,utility) DO UPDATE SET
+              metric_date=excluded.metric_date, downloaded=excluded.downloaded,
+              processed=excluded.processed, errors=excluded.errors,
+              metrics_complete=excluded.metrics_complete, source=excluded.source,
+              started_at=excluded.started_at, finished_at=excluded.finished_at,
+              updated_at=excluded.updated_at, details_json=excluded.details_json
+        """, (run_id, task_id, utility, metric_date, downloaded, processed, errors,
+              int(metrics_complete), source, started_at, finished_at, updated_at,
+              details_json))
+        conn.commit()
+
+
+def calendar_invoice_metrics(start: str, end: str) -> list[dict]:
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT metric_date, utility, downloaded, processed, errors,
+                   metrics_complete, run_id, updated_at
+            FROM invoice_run_metrics
+            WHERE metric_date BETWEEN ? AND ?
+            ORDER BY metric_date, utility, run_id
+        """, (start, end)).fetchall()
+    return [dict(row) for row in rows]
+
+
+# ── per-item invoice metrics (new stdout-based mechanism) ────────────────────
+
+def _metrics_now() -> str:
+    return dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def initialize_run_metrics(run_id: int, *, utility: str, task_id: str) -> None:
+    """Creates the partial metric envelope for a newly instrumented run."""
+    ensure_db()
+    with _connection() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO run_metrics
+               (run_id, utility, task_id, metrics_complete, metrics_version, updated_at)
+               VALUES (?, ?, ?, 0, 1, ?)""",
+            (run_id, utility, task_id, _metrics_now()),
+        )
+
+
+def upsert_run_metric_item(
+    run_id: int,
+    *,
+    item_key: str,
+    utility: str,
+    task_id: str,
+    competence: str,
+    outcome: str,
+) -> None:
+    """Upserts one item result and re-derives run counters within the same transaction."""
+    if outcome not in {"downloaded", "skipped_existing", "item_error", "other"}:
+        raise ValueError(f"Resultado de metrica invalido: {outcome}")
+    ensure_db()
+    now = _metrics_now()
+    with _connection() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO run_metrics
+               (run_id, utility, task_id, metrics_complete, metrics_version, updated_at)
+               VALUES (?, ?, ?, 0, 1, ?)""",
+            (run_id, utility, task_id, now),
+        )
+        conn.execute(
+            """INSERT INTO run_metric_items
+               (run_id, item_key, utility, task_id, competence, outcome, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(run_id, item_key) DO UPDATE SET
+                 utility=excluded.utility, task_id=excluded.task_id,
+                 competence=excluded.competence, outcome=excluded.outcome,
+                 updated_at=excluded.updated_at""",
+            (run_id, item_key, utility, task_id, competence, outcome, now, now),
+        )
+        counts = {row[0]: int(row[1]) for row in conn.execute(
+            "SELECT outcome, COUNT(*) FROM run_metric_items WHERE run_id=? GROUP BY outcome",
+            (run_id,),
+        ).fetchall()}
+        downloaded = counts.get("downloaded", 0)
+        skipped    = counts.get("skipped_existing", 0)
+        errors     = counts.get("item_error", 0)
+        other      = counts.get("other", 0)
+        conn.execute(
+            """UPDATE run_metrics
+               SET downloaded_count=?, skipped_existing_count=?, item_error_count=?,
+                   other_count=?, processed_count=?, updated_at=?
+               WHERE run_id=?""",
+            (downloaded, skipped, errors, other,
+             downloaded + skipped + errors + other, now, run_id),
+        )
+
+
+def set_run_metrics_complete(run_id: int, *, complete: bool) -> None:
+    ensure_db()
+    with _connection() as conn:
+        conn.execute(
+            "UPDATE run_metrics SET metrics_complete=?, updated_at=? WHERE run_id=?",
+            (1 if complete else 0, _metrics_now(), run_id),
+        )
+
+
+def get_run_metric_counts(run_id: int) -> dict | None:
+    """Returns the invoice counters for one run, or None if no metrics exist."""
+    ensure_db()
+    with _connection() as conn:
+        row = conn.execute(
+            """SELECT downloaded_count, skipped_existing_count, item_error_count,
+                      other_count, utility, task_id
+               FROM run_metrics WHERE run_id=?""",
+            (run_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "downloaded":       int(row[0] or 0),
+        "skipped_existing": int(row[1] or 0),
+        "item_error":       int(row[2] or 0),
+        "other":            int(row[3] or 0),
+        "utility":          str(row[4] or ""),
+        "task_id":          str(row[5] or ""),
+    }
+
+
+def calendar_metric_summary(
+    start: str,
+    end: str,
+    *,
+    utility: str | None = None,
+    task_id: str | None = None,
+) -> dict:
+    """Aggregates metrics for a date range from both storage tables.
+
+    Reads invoice_run_metrics (synced/legacy) and run_metrics (new per-item
+    tracking for runs not yet synced). Returns sparse days — only dates that
+    have data appear in the list.
+    """
+    ensure_db()
+    util_clause_1 = " AND utility = ?" if utility else ""
+    util_clause_2 = " AND rm.utility = ?" if utility else ""
+    p1: list = [start, end] + ([utility] if utility else [])
+    p2: list = [start, end] + ([utility] if utility else [])
+    query = f"""
+        SELECT date, utility, run_id, downloaded, processed, errors,
+               skipped_existing, other, metrics_complete, updated_at
+        FROM (
+            SELECT metric_date as date, utility, run_id,
+                   downloaded, processed, errors,
+                   0 as skipped_existing, 0 as other,
+                   metrics_complete, updated_at
+            FROM invoice_run_metrics
+            WHERE metric_date BETWEEN ? AND ?
+            {util_clause_1}
+
+            UNION ALL
+
+            SELECT date(r.started_at) as date, rm.utility, rm.run_id,
+                   rm.downloaded_count,
+                   rm.downloaded_count + rm.skipped_existing_count,
+                   rm.item_error_count,
+                   rm.skipped_existing_count,
+                   rm.other_count,
+                   rm.metrics_complete,
+                   coalesce(r.finished_at, r.started_at)
+            FROM run_metrics rm
+            JOIN runs r ON rm.run_id = r.id
+            WHERE date(r.started_at) BETWEEN ? AND ?
+            {util_clause_2}
+            AND rm.run_id NOT IN (SELECT run_id FROM invoice_run_metrics)
+        )
+        ORDER BY date, utility, run_id
+    """
+    with _connection() as conn:
+        rows = conn.execute(query, p1 + p2).fetchall()
+    if not rows:
+        return {
+            "totals": {"downloaded": 0, "skipped_existing": 0, "errors": 0, "other": 0, "processed": 0},
+            "days": [], "utilities": [], "has_metrics": False, "metrics_complete": False,
+        }
+    by_date_util: dict[tuple, list] = {}
+    for r in rows:
+        by_date_util.setdefault((r[0], r[1]), []).append(r)
+    by_date: dict[str, dict[str, list]] = {}
+    for (d, u), u_rows in by_date_util.items():
+        by_date.setdefault(d, {})[u] = u_rows
+    days = []
+    utilities_list = []
+    totals: dict[str, int] = {"downloaded": 0, "skipped_existing": 0, "errors": 0, "other": 0, "processed": 0}
+    for date_str in sorted(by_date):
+        date_utils = by_date[date_str]
+        d_dl = d_sk = d_err = d_oth = d_proc = d_runs = 0
+        d_complete = True
+        day_utils: list[str] = []
+        day_by_utility: list[dict] = []
+        for util_name in sorted(date_utils):
+            u_rows = date_utils[util_name]
+            u_dl   = sum(int(r[3] or 0) for r in u_rows)
+            u_proc = sum(int(r[4] or 0) for r in u_rows)
+            u_err  = sum(int(r[5] or 0) for r in u_rows)
+            u_sk   = sum(int(r[6] or 0) for r in u_rows)
+            u_oth  = sum(int(r[7] or 0) for r in u_rows)
+            u_comp = all(bool(r[8]) for r in u_rows)
+            run_ids = [int(r[2]) for r in u_rows]
+            d_dl += u_dl; d_sk += u_sk; d_err += u_err
+            d_oth += u_oth; d_proc += u_proc; d_runs += len(run_ids)
+            d_complete = d_complete and u_comp
+            day_utils.append(util_name)
+            entry = {
+                "utility": util_name, "downloaded": u_dl, "processed": u_proc,
+                "errors": u_err, "skipped_existing": u_sk, "other": u_oth,
+                "metrics_complete": u_comp, "run_ids": run_ids,
+                "run_count": len(run_ids),
+                "last_update": max((r[9] for r in u_rows if r[9]), default=None),
+            }
+            day_by_utility.append(entry)
+            utilities_list.append({**entry, "date": date_str})
+        days.append({
+            "date": date_str, "has_metrics": True,
+            "downloaded": d_dl, "skipped_existing": d_sk, "errors": d_err,
+            "other": d_oth, "processed": d_proc,
+            "metrics_complete": d_complete,
+            "utilities": day_utils, "by_utility": day_by_utility,
+            "run_count": d_runs,
+            "last_update": max((r[9] for u in date_utils.values() for r in u if r[9]), default=None),
+        })
+        totals["downloaded"] += d_dl; totals["skipped_existing"] += d_sk
+        totals["errors"] += d_err; totals["other"] += d_oth; totals["processed"] += d_proc
+    return {
+        "totals": totals, "days": days, "utilities": utilities_list,
+        "has_metrics": True,
+        "metrics_complete": all(d["metrics_complete"] for d in days),
+    }
+
+
+# ── run logs ──────────────────────────────────────────────────────────────────
 
 def save_run_log(run_id: int, log_text: str) -> None:
     ensure_db()

@@ -76,6 +76,15 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from core.project_paths import resolve_indice_master_csv
 
 try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_cemig_outcome
+    def _emit(outcome: str, *, uc: str, mes_ref: str, carimbo: str = "") -> None:
+        _emit_cemig_outcome(outcome, utility="CEMIG", account_id=uc,
+                            competence=mes_ref, invoice_id=carimbo or mes_ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
+try:
     import pdfplumber
     _PDFPLUMBER_OK = True
 except ImportError:
@@ -1575,6 +1584,7 @@ def executar(limite: Optional[int] = None, um_por_cnpj: bool = False) -> int:
                         if ja_fatura_local:
                             motivos.append("indice local fatura_id")
                         log(f"  {fat.mes_ano} — já baixado, ignorando ({', '.join(motivos)})", "DBG")
+                        _emit("skipped_existing", uc=item.uc, mes_ref=fat.mes_ref)
                         puladas += 1
                         continue
 
@@ -1618,6 +1628,7 @@ def executar(limite: Optional[int] = None, um_por_cnpj: bool = False) -> int:
                             cnpj=item.cnpj_digitos,
                             arquivo=str(destino),
                         )
+                        _emit("downloaded", uc=item.uc, mes_ref=fat.mes_ref, carimbo=carimbo)
                         baixadas += 1
                         log(f"  ✓ {fat.mes_ano} → {carimbo}.pdf", "OK")
                     else:

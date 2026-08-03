@@ -61,6 +61,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from core.project_paths import resolve_copel_accessos_xls
 
+try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_copel_outcome
+    def _emit(outcome: str, *, instalacao: str, mes_ref: str, carimbo: str = "") -> None:
+        _emit_copel_outcome(outcome, utility="COPEL MT", account_id=instalacao,
+                            competence=mes_ref, invoice_id=carimbo or mes_ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
 # =============================================================================
 # CONFIGURACAO
 # =============================================================================
@@ -1349,10 +1358,12 @@ def main() -> int:
             for fatura in faturas:
                 if not force and indice_local.ja_baixado(inst.instalacao, fatura.mes_ref):
                     log(f"Ja baixado: {inst.instalacao} / {fatura.mes_ref}", "SKIP")
+                    _emit("skipped_existing", instalacao=inst.instalacao, mes_ref=fatura.mes_ref)
                     skip_total += 1
                     continue
                 if not force and _master_ja_baixado(master, inst.instalacao, fatura.mes_ref, "COPEL"):
                     log(f"Ja no master: {inst.instalacao} / {fatura.mes_ref}", "SKIP")
+                    _emit("skipped_existing", instalacao=inst.instalacao, mes_ref=fatura.mes_ref)
                     skip_total += 1
                     continue
 
@@ -1385,6 +1396,7 @@ def main() -> int:
                                 inst.instalacao, fatura,
                                 inst.cnpj, str(destino),
                                 carimbo_pre=carimbo)
+                _emit("downloaded", instalacao=inst.instalacao, mes_ref=fatura.mes_ref, carimbo=carimbo)
                 ok_total += 1
 
         log("=" * 60)

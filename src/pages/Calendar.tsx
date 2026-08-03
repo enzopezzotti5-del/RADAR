@@ -223,8 +223,8 @@ export default function Calendar() {
                   {counts.cancelado > 0 && <div className="text-orange-600">{counts.cancelado} cancel.</div>}
                   {(counts.aguardando + counts.parando + counts.outros) > 0 && <div className="text-muted-foreground">{counts.aguardando + counts.parando + counts.outros} outros</div>}
                 </div>}
-                {view === 'faturas' && invoiceDay && <div className="mt-2 space-y-0.5 text-[11px]"><div className="text-emerald-600">B {invoiceDay.downloaded}</div><div className="text-amber-600">P {invoiceDay.skipped_existing}</div><div className="text-destructive">E {invoiceDay.errors}</div></div>}
-                {view === 'faturas' && !invoiceDay && runs.length > 0 && <div className="mt-2 text-[11px] text-muted-foreground">Sem detalhe</div>}
+                {view === 'faturas' && invoiceDay?.has_metrics && <div className="mt-2 space-y-0.5 text-[11px]"><div className="text-emerald-600">B {invoiceDay.downloaded}</div><div className="text-amber-600">P {invoiceDay.skipped_existing}</div><div className="text-destructive">E {invoiceDay.errors}</div></div>}
+                {view === 'faturas' && !invoiceDay?.has_metrics && runs.length > 0 && <div className="mt-2 text-[11px] text-muted-foreground">Sem detalhe</div>}
               </button>
             })}
           </div>

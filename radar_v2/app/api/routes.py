@@ -9,6 +9,7 @@ import datetime as dt
 import json
 
 from flask import Blueprint, current_app, jsonify, request
+from ..repositories.storage import calendar_invoice_metrics, calendar_metric_summary
 
 bp = Blueprint("api_v2", __name__, url_prefix="/api")
 
@@ -62,12 +63,7 @@ def dashboard():
 
 @bp.get("/calendar/summary")
 def calendar_summary():
-    """Expose an explicit empty state until invoice metrics are imported.
-
-    Missing invoice evidence is deliberately not represented as completed or
-    zero-valued processing. The React calendar uses ``has_metrics`` to render
-    an honest empty state for a partially populated competence.
-    """
+    """Agrega telemetria persistida por dia e concessionária (sparse: só datas com dados)."""
     try:
         start = dt.date.fromisoformat(request.args.get("start", ""))
         end = dt.date.fromisoformat(request.args.get("end", ""))
@@ -75,19 +71,15 @@ def calendar_summary():
         return jsonify({"ok": False, "error": "Datas devem usar YYYY-MM-DD"}), 400
     if end < start or (end - start).days > 370:
         return jsonify({"ok": False, "error": "Intervalo de competencia invalido"}), 400
-    days = []
-    current = start
-    while current <= end:
-        days.append({
-            "date": current.isoformat(), "downloaded": 0, "skipped_existing": 0,
-            "errors": 0, "other": 0, "processed": 0, "metrics_complete": False,
-        })
-        current += dt.timedelta(days=1)
+    utility = request.args.get("utility") or None
+    task_id = request.args.get("task_id") or None
+    summary = calendar_metric_summary(
+        start.isoformat(), end.isoformat(), utility=utility, task_id=task_id,
+    )
     return jsonify({
         "ok": True, "start": start.isoformat(), "end": end.isoformat(),
-        "timezone": "America/Sao_Paulo", "has_metrics": False,
-        "metrics_complete": False, "days": days, "utilities": [],
-        "totals": {"downloaded": 0, "skipped_existing": 0, "errors": 0, "other": 0, "processed": 0},
+        "timezone": request.args.get("timezone") or "America/Sao_Paulo",
+        **summary,
     })
 
 

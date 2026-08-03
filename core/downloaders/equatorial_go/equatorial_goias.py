@@ -34,6 +34,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import _venv_check  # noqa
 
+try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_eq_outcome
+    def _emit(outcome: str, *, instalacao: str, mes_ref: str, carimbo: str = "") -> None:
+        _emit_eq_outcome(outcome, utility="EQUATORIAL GO", account_id=instalacao,
+                         competence=mes_ref, invoice_id=carimbo or mes_ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
 import csv
 import importlib.util
 import logging
@@ -1970,6 +1979,7 @@ def _processar_download_uc(
     mes_ref_pre = _inspecionar_pagina_pre_download(driver)
     if mes_ref_pre:
         if ja_foi_baixado_local(baixados, linha.instalacao, mes_ref_pre):
+            _emit("skipped_existing", instalacao=linha.instalacao, mes_ref=mes_ref_pre)
             res.update(status="JA_EXISTE", mensagem=f"Já existe: {mes_ref_pre}", mes_ref=mes_ref_pre)
             return res
         refs_pendentes = [mes_ref_pre]
@@ -2015,6 +2025,7 @@ def _processar_download_uc(
         if pdf and pdf.exists():
             try: pdf.unlink()
             except Exception: pass
+        _emit("skipped_existing", instalacao=linha.instalacao, mes_ref=mes_ref)
         res.update(status="JA_EXISTE", mensagem=f"Já existe: {mes_ref}")
         return res
 
@@ -2049,6 +2060,7 @@ def _processar_download_uc(
     )
     baixados.add((linha.instalacao.strip(), mes_ref.strip()))
 
+    _emit("downloaded", instalacao=linha.instalacao, mes_ref=mes_ref, carimbo=indice_bb)
     res.update(status="OK", mensagem="Download concluído", indice=indice_bb, arquivo=str(caminho_final))
     return res
 

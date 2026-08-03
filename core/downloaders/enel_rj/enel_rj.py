@@ -33,6 +33,15 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_rj_outcome
+    def _emit(outcome: str, *, uc: str, ref: str, carimbo: str = "") -> None:
+        _emit_rj_outcome(outcome, utility="ENEL RJ", account_id=uc,
+                         competence=ref, invoice_id=carimbo or ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
 
 # =============================================================================
 # CONFIG
@@ -929,6 +938,7 @@ def processar_uc(
 
         if (uc_norm, ref) in baixados:
             log.info("  → %s já existe no índice — pulando", ref)
+            _emit("skipped_existing", uc=uc_norm, ref=ref)
             resultados.append({
                 "uc": uc_exibir,
                 "mes_ref": ref,
@@ -1022,6 +1032,7 @@ def processar_uc(
         )
         baixados.add((uc_norm, ref))
         refs_processadas_no_lote.add(ref)
+        _emit("downloaded", uc=uc_norm, ref=ref, carimbo=carimbo)
 
         log.info("  ✓ %s → %s/%s/%s.pdf", ref, ref, subtipo, carimbo)
         resultados.append({

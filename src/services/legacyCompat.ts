@@ -260,12 +260,16 @@ export interface LegacyCompatRunLog {
 export interface CalendarMetricRow {
   date: string
   utility: string
+  has_metrics: boolean
   downloaded: number
   skipped_existing: number
   errors: number
   other: number
   processed: number
   metrics_complete: boolean
+  run_ids?: number[]
+  run_count?: number
+  last_update?: string | null
 }
 
 export interface CalendarMetricSummary {

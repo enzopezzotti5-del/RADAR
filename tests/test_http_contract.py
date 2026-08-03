@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+import datetime as dt
 
 import pytest
 
@@ -22,6 +24,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(run_service, "APP_DATA_DIR", data_dir)
     monkeypatch.setattr(run_service, "RUN_LOG_DIR", data_dir / "run_logs")
     monkeypatch.setattr(preflight_service, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(run_service, "RUN_METRICS_DIR", data_dir / "run_metrics")
 
     from radar_v2.app.api.server import REACT_DIST, create_app
 
@@ -53,3 +56,80 @@ def test_public_session_and_calendar_without_metrics(client):
         "/api/calendar/summary?start=2026-08-01&end=2026-08-31"
     ).get_json()
     assert payload["has_metrics"] is False
+
+
+def _login(client):
+    response = client.post("/login", data={"username": "teste", "password": "teste"})
+    assert response.status_code in {302, 303}
+
+
+def test_calendar_aggregates_metrics_and_keeps_zero_distinct_from_absence(client):
+    from radar_v2.app.repositories.storage import upsert_invoice_metric
+
+    common = dict(task_id="dl_enel_sp", metric_date="2026-08-04", metrics_complete=True,
+                  source="test", started_at="2026-08-04 08:00:00",
+                  finished_at="2026-08-04 08:01:00", updated_at="2026-08-04 08:01:00",
+                  details_json="{}")
+    upsert_invoice_metric(run_id=10, utility="ENEL", downloaded=0, processed=0, errors=0, **common)
+    upsert_invoice_metric(run_id=11, utility="CELESC", downloaded=5, processed=4, errors=1, **common)
+    _login(client)
+    payload = client.get("/api/calendar/summary?start=2026-08-01&end=2026-08-31").get_json()
+    day = next(item for item in payload["days"] if item["date"] == "2026-08-04")
+    assert payload["has_metrics"] is True
+    assert day["has_metrics"] is True
+    assert (day["downloaded"], day["processed"], day["errors"]) == (5, 4, 1)
+    assert day["utilities"] == ["CELESC", "ENEL"]
+    # dates without data are absent from the sparse days list
+    assert not any(item["date"] == "2026-08-05" for item in payload["days"])
+
+
+def test_metric_upsert_is_idempotent(client):
+    from radar_v2.app.repositories.storage import upsert_invoice_metric
+
+    common = dict(run_id=42, task_id="dl_copel_bt", utility="COPEL", metric_date="2026-08-10",
+                  metrics_complete=True, source="test", started_at="2026-08-10 08:00:00",
+                  finished_at="2026-08-10 08:01:00", updated_at="2026-08-10 08:01:00", details_json="{}")
+    upsert_invoice_metric(downloaded=2, processed=2, errors=0, **common)
+    upsert_invoice_metric(downloaded=3, processed=2, errors=1, **common)
+    _login(client)
+    payload = client.get("/api/calendar/summary?start=2026-08-10&end=2026-08-10").get_json()
+    assert payload["days"][0]["downloaded"] == 3
+    assert payload["days"][0]["run_count"] == 1
+
+
+def test_new_metric_path_reaches_sqlite_and_api(client):
+    """RADAR_METRIC stdout path: items persist idempotently and appear in the calendar API."""
+    from radar_v2.app.repositories.storage import (
+        create_run, initialize_run_metrics, set_run_metrics_complete,
+    )
+    from radar_v2.app.services.run_service import RunService
+
+    run_id = create_run(
+        started_at=dt.datetime(2026, 8, 1, 12, 0).strftime("%Y-%m-%d %H:%M:%S"),
+        task_id="dl_enel_sp", task_name="ENEL SP", category="ENEL", command="test",
+    )
+    initialize_run_metrics(run_id, utility="ENEL SP", task_id="dl_enel_sp")
+    from core.metrics.radar_metrics import build_item_key
+    import json as _json
+    def _metric_line(i: int, outcome: str = "downloaded") -> str:
+        item_key = build_item_key(
+            utility="ENEL SP", account_id=f"UC{i:03d}",
+            competence="2026-07", invoice_id=f"INV{i}",
+        )
+        return "RADAR_METRIC " + _json.dumps({
+            "version": 1, "item_key": item_key, "outcome": outcome,
+            "utility": "ENEL SP", "task_id": "dl_enel_sp", "competence": "2026-07",
+        }, sort_keys=True, ensure_ascii=True)
+    for i in range(5):
+        RunService._record_metric_event(run_id, "dl_enel_sp", _metric_line(i))
+    # idempotent: re-emitting the same item must not double the count
+    RunService._record_metric_event(run_id, "dl_enel_sp", _metric_line(0))
+    set_run_metrics_complete(run_id, complete=True)
+    RunService._close_run_metrics(
+        run_id, "dl_enel_sp", 0,
+        dt.datetime(2026, 8, 1, 12, 0), dt.datetime(2026, 8, 1, 15, 0),
+    )
+    _login(client)
+    payload = client.get("/api/calendar/summary?start=2026-08-01&end=2026-08-01").get_json()
+    assert payload["days"][0]["downloaded"] == 5
+    assert payload["days"][0]["by_utility"][0]["run_ids"] == [run_id]

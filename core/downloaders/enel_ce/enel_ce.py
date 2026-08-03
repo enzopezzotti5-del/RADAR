@@ -42,6 +42,13 @@ from bs4 import BeautifulSoup
 from openpyxl import load_workbook
 import pdfplumber
 
+from core.metrics.radar_metrics import (
+    emit_downloaded,
+    emit_item_error,
+    emit_progress,
+    emit_skipped_existing,
+)
+
 import subprocess
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -1018,6 +1025,9 @@ class EnelCELegacyPlanilhaDownloader:
             classificacao=classe, ref=ref_pasta,
             fatura_id=fatura_id, arquivo=destino,
         )
+        emit_downloaded(
+            utility="ENEL CE", account_id=unidade.uc, competence=ref_pasta, invoice_id=fatura_id,
+        )
         return destino
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -1120,6 +1130,9 @@ class EnelCELegacyPlanilhaDownloader:
             # ── Deduplicação ──────────────────────────────────────────────────
             if _chave_dedup(unidade.uc, ref) in self.memoria_download:
                 self.log(f"    ⏭  ref={ref} já no índice. Pulando.", "SKIP")
+                emit_skipped_existing(
+                    utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id,
+                )
                 continue
             if fatura_id in self.faturas_baixadas:
                 self.log("    🔁 Fatura já baixada nesta execução. Pulando.", "DUP")
@@ -1134,6 +1147,7 @@ class EnelCELegacyPlanilhaDownloader:
             except TimeoutException:
                 self.log(f"    ✗  Tabela de faturas não encontrada antes da fatura {seq}.", "ERROR")
                 self.qtd_erros += 1
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 break
 
             # ── Estado limpo: garante que nenhum checkbox está marcado ─────────
@@ -1149,6 +1163,7 @@ class EnelCELegacyPlanilhaDownloader:
                     "WARNING",
                 )
                 self._registrar_sem_link(unidade, ref, situacao)
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 continue
 
             self.log(f"    ▶  Checkbox #{chk_id} — marcando fatura...", "STEP")
@@ -1177,6 +1192,7 @@ class EnelCELegacyPlanilhaDownloader:
             except Exception as e:
                 self.log(f"    ✗  Erro ao marcar checkbox #{chk_id}: {e}", "ERROR")
                 self.qtd_erros += 1
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 self._desmarcar_todos_checkboxes_2via()
                 continue
 
@@ -1217,6 +1233,7 @@ class EnelCELegacyPlanilhaDownloader:
             except Exception as e:
                 self.log(f"    ✗  Erro ao clicar em Imprimir: {e}", "ERROR")
                 self.qtd_erros += 1
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 self._desmarcar_todos_checkboxes_2via()
                 continue
 
@@ -1227,7 +1244,7 @@ class EnelCELegacyPlanilhaDownloader:
             if not pdf_path or not os.path.exists(pdf_path):
                 self.log(f"    ✗  PDF não chegou para ref={ref}.", "ERROR")
                 self.qtd_erros += 1
-                # Aguarda a página estabilizar antes de tentar a próxima
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 self._desmarcar_todos_checkboxes_2via()
                 time.sleep(PAUSA_POSTBACK)
                 continue
@@ -1238,6 +1255,7 @@ class EnelCELegacyPlanilhaDownloader:
             destino = self._salvar_pdf_baixado(unidade, ref, fatura_id, pdf_path)
             if not destino:
                 self.qtd_erros += 1
+                emit_item_error(utility="ENEL CE", account_id=unidade.uc, competence=ref, invoice_id=fatura_id)
                 continue
 
             self.qtd_baixadas_hoje += 1
@@ -1286,6 +1304,7 @@ class EnelCELegacyPlanilhaDownloader:
 
             for unidade in ucs_do_login:
                 proc += 1
+                emit_progress(uc_current=proc, uc_total=total)
                 pct   = proc / total * 100 if total else 100
 
                 if pct >= prox_marca:

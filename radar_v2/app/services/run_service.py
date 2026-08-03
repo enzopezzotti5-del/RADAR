@@ -13,6 +13,7 @@ Mantém:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import re
 import shlex
@@ -21,6 +22,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 try:
     from core.pipelines._session_runtime import build_session_command
@@ -34,15 +36,46 @@ from ..repositories.storage import (
     create_run,
     finish_run,
     get_run_log,
+    get_run_metric_counts,
+    initialize_run_metrics,
     list_runs,
     save_run_log,
+    set_run_metrics_complete,
+    upsert_invoice_metric,
+    upsert_run_metric_item,
 )
 from .preflight_service import ENV_FILE, REQUIRED_ENV_KEYS, TaskPreflightError
+from .metric_events import ProgressEvent, parse_metric_event, parse_progress_event
 
 ROOT_DIR    = Path(__file__).resolve().parent.parent.parent.parent
 RUN_LOG_DIR = APP_DATA_DIR / "run_logs"
+RUN_METRICS_DIR = APP_DATA_DIR / "run_metrics"
 ANSI_RE     = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 MAX_LOG_FILES = 400
+
+# Maps task_id → canonical utility name stored in run_metrics.
+# Nomes canônicos: sem prefixo "Neoenergia", sem underscore, sem variações.
+# dl_light_rj é excluído: automatiza modal BB, não gera faturas próprias.
+# Pipelines não estão aqui: não são donos do evento downloaded.
+METRIC_TASKS = {
+    "dl_enel_sp":       "ENEL SP",
+    "dl_enel_ce":       "ENEL CE",
+    "dl_enel_rj":       "ENEL RJ",
+    "dl_neo_coelba":    "COELBA",
+    "dl_neo_celpe":     "CELPE",
+    "dl_neo_cosern":    "COSERN",
+    "dl_neo_elektro":   "ELEKTRO",
+    "dl_neo_ceb":       "CEB",
+    "dl_cpfl_bt":       "CPFL",
+    "dl_cpfl_mt":       "CPFL",
+    "dl_rge_bt":        "RGE",
+    "dl_cemig":         "CEMIG",
+    "dl_copel_bt":      "COPEL BT",
+    "dl_copel_mt":      "COPEL MT",
+    "dl_celesc_bt":     "CELESC BT",
+    "dl_celesc_mt":     "CELESC MT",
+    "dl_equatorial_go": "EQUATORIAL GO",
+}
 
 
 class RunConflictError(RuntimeError):
@@ -63,6 +96,7 @@ class LiveRun:
     log_lines: list[str] = field(default_factory=list)
     status_text: str = "Rodando"
     exit_code:   int | None = None
+    progress: ProgressEvent | None = None
 
     @property
     def pid(self) -> int | None:
@@ -93,6 +127,7 @@ class RunService:
         self._live: dict[int, LiveRun] = {}
         self._preflight = preflight
         RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        RUN_METRICS_DIR.mkdir(parents=True, exist_ok=True)
         self._prune_log_files()
         try:
             compact_run_history()
@@ -198,6 +233,12 @@ class RunService:
                 task_id=task_id, task_name=task_name,
                 category=category, command=command,
             )
+            utility = METRIC_TASKS.get(task_id)
+            if utility:
+                try:
+                    initialize_run_metrics(run_id, utility=utility, task_id=task_id)
+                except Exception:
+                    pass
             # Determina o diretório do script para incluir no PYTHONPATH,
             # necessário para imports relativos (ex: worker_coelba importa
             # classificacao_ocr.py do mesmo diretório).
@@ -368,7 +409,8 @@ class RunService:
     # ── internos ─────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _env(script_dir: Path | None = None) -> dict:
+    def _env(script_dir: Path | None = None, *,
+             run_id: int | None = None, task_id: str | None = None) -> dict:
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -390,6 +432,10 @@ class RunService:
         new_parts = [p for p in extra_parts if p not in existing_list]
         if new_parts:
             env["PYTHONPATH"] = os.pathsep.join(new_parts + (existing_list if existing_list else []))
+        if run_id is not None:
+            env["RADAR_RUN_ID"] = str(run_id)
+        if task_id:
+            env["RADAR_TASK_ID"] = task_id
         return env
 
     @staticmethod
@@ -413,7 +459,26 @@ class RunService:
                 return run
         return None
 
+    @staticmethod
+    def _record_metric_event(run_id: int, task_id: str, line: str) -> None:
+        """Parses one RADAR_METRIC line from stdout and persists the item."""
+        event = parse_metric_event(line)
+        if event is None:
+            return
+        try:
+            upsert_run_metric_item(
+                run_id,
+                item_key=event.item_key,
+                utility=event.utility,
+                task_id=task_id,
+                competence=event.competence,
+                outcome=event.outcome,
+            )
+        except Exception:
+            pass
+
     def _spawn_reader(self, run_id: int, stream, prefix: str) -> None:
+        is_stdout = not prefix
         def _read():
             if stream is None:
                 return
@@ -422,8 +487,21 @@ class RunService:
                     if not line:
                         break
                     text = self._clean(line.rstrip("\n"))
-                    if text:
-                        self._append_log(run_id, f"{prefix}{text}" if prefix else text)
+                    if not text:
+                        continue
+                    if is_stdout:
+                        if text.startswith("RADAR_METRIC "):
+                            with self._lock:
+                                run = self._live.get(run_id)
+                            self._record_metric_event(run_id, run.task_id if run else "", text)
+                        elif text.startswith("RADAR_PROGRESS "):
+                            event = parse_progress_event(text)
+                            if event is not None:
+                                with self._lock:
+                                    run = self._live.get(run_id)
+                                    if run is not None:
+                                        run.progress = event
+                    self._append_log(run_id, f"{prefix}{text}" if prefix else text)
             finally:
                 try:
                     stream.close()
@@ -470,6 +548,9 @@ class RunService:
                 run_id,
                 f"[FAILURE] TYPE=EXECUTION STAGE=SUBPROCESS EXIT_CODE={exit_code} DURATION={duration_s:.1f}s",
             )
+        metric_log = self._close_run_metrics(run_id, run.task_id, exit_code, started_at, finished_at)
+        if metric_log:
+            self._append_log(run_id, f"[METRICS] {metric_log}")
         self._append_log(run_id, f"[END] exit={exit_code} duração={duration_s:.1f}s")
         try:
             log_text = "\n".join(self._read_log_file(run_id))
@@ -477,6 +558,50 @@ class RunService:
                 save_run_log(run_id, log_text)
         except Exception:
             pass
+
+    @staticmethod
+    def _close_run_metrics(
+        run_id: int, task_id: str, exit_code: int,
+        started_at: dt.datetime, finished_at: dt.datetime,
+    ) -> str | None:
+        """Marks metrics complete and syncs aggregated counts to invoice_run_metrics."""
+        counts = get_run_metric_counts(run_id)
+        if counts is None:
+            return None
+        utility = counts.get("utility", "")
+        if not utility:
+            return None
+        complete = exit_code == 0
+        try:
+            set_run_metrics_complete(run_id, complete=complete)
+        except Exception:
+            pass
+        try:
+            zone = ZoneInfo("America/Sao_Paulo")
+            local_fin = (finished_at.replace(tzinfo=zone) if finished_at.tzinfo is None
+                         else finished_at.astimezone(zone))
+            now = dt.datetime.now(ZoneInfo("America/Sao_Paulo"))
+            total = (counts["downloaded"] + counts["skipped_existing"]
+                     + counts["item_error"] + counts["other"])
+            upsert_invoice_metric(
+                run_id=run_id, task_id=task_id, utility=utility,
+                metric_date=local_fin.date().isoformat(),
+                downloaded=counts["downloaded"],
+                processed=total,
+                errors=counts["item_error"],
+                metrics_complete=complete,
+                source="radar_metric",
+                started_at=started_at.strftime("%Y-%m-%d %H:%M:%S"),
+                finished_at=local_fin.strftime("%Y-%m-%d %H:%M:%S"),
+                updated_at=now.strftime("%Y-%m-%d %H:%M:%S"),
+                details_json="{}",
+            )
+        except Exception:
+            pass
+        return (
+            f"{utility}: baixadas={counts['downloaded']} "
+            f"existentes={counts['skipped_existing']} erros={counts['item_error']}"
+        )
 
     def _kill_tree(self, run: LiveRun) -> None:
         pid = run.pid

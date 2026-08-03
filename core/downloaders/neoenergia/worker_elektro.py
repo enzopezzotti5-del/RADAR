@@ -56,6 +56,16 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from core.project_paths import resolve_indice_master_csv
 
+try:
+    from core.metrics.radar_metrics import emit_outcome as _emit_neo_outcome
+    def _emit(outcome: str, *, instalacao: str, ref: str, carimbo: str = "") -> None:
+        _emit_neo_outcome(outcome, utility="ELEKTRO", account_id=instalacao,
+                          competence=ref, invoice_id=carimbo or ref)
+except Exception:
+    def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
+        pass
+
+
 
 # ── Índice master unificado ────────────────────────────────────────────────────
 def _carregar_master_modulo():
@@ -1282,6 +1292,7 @@ def selecionar_faturas_pendentes(driver, ja_baixados: Set[str], cnpj: str, insta
             motivo = f"ano inválido ref={f.referencia}"
         elif ja_foi_baixado(ja_baixados, instalacao, f.referencia):
             motivo = "já consta no índice"
+            _emit("skipped_existing", instalacao=instalacao, ref=f.referencia)
 
         if motivo:
             log.info(f"  DESCARTADA ref={f.referencia} | {motivo}")
@@ -1551,6 +1562,7 @@ def processar_uc(
                 except Exception:
                     pass
                 log.info(f"  Fatura já registrada por outro worker: {instalacao} | {f.referencia}")
+                _emit("skipped_existing", instalacao=instalacao, ref=f.referencia)
                 return 0
 
             try:
@@ -1586,6 +1598,7 @@ def processar_uc(
                     pdf.unlink(missing_ok=True)
             except Exception:
                 pass
+            _emit("skipped_existing", instalacao=instalacao, ref=f.referencia)
             return 0
 
         try:
@@ -1615,6 +1628,7 @@ def processar_uc(
         }
         append_index_row(row, ja_baixados)
 
+    _emit("downloaded", instalacao=instalacao, ref=f.referencia, carimbo=carimbo)
     _prog("download_ok", uc=instalacao, estado=estado, referencia=f.referencia, carimbo=carimbo, status="baixada")
     log.info(f"  Download concluído: instalação={instalacao} ref={f.referencia}")
     return 1
