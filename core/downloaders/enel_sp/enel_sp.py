@@ -74,7 +74,8 @@ else:
 
 
 try:
-    from core.metrics.radar_metrics import emit_outcome as _emit_outcome
+from core.metrics.radar_metrics import emit_outcome as _emit_outcome
+from radar_v2.app.services.orbit_handoff import request_orbit_handoff
     def _emit_metric(outcome: str, *, uc: str, ref: str, belnr: str) -> None:
         _emit_outcome(outcome, utility="ENEL SP", account_id=uc, competence=ref, invoice_id=belnr)
 except Exception:
@@ -847,6 +848,7 @@ class EnelDownloaderArquivista:
         self.qtd_baixadas_hoje += 1
         self.duplicadas_consecutivas = 0
         _emit_metric("downloaded", uc=uc_portal, ref=ref, belnr=belnr)
+        request_orbit_handoff(filepath, task_id="dl_enel_sp", utility="ENEL")
         return carimbo, filepath, classificacao
 
     def _baixar_fatura_via_navegador_seguro(
