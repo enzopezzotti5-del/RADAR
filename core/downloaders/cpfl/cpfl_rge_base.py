@@ -44,6 +44,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from core.downloaders.cpfl.cpfl_guard import validar_expansao_ucs
+
 
 ROOT_LOCAL = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_LOCAL))
@@ -2513,6 +2515,7 @@ def executar(
     offset_titulares: int = 0,
     worker_id: int = 0,
     forcar_download: bool = False,
+    max_ucs_por_titular: int = 368,
 ) -> int:
     global _WORKER_ID
     _WORKER_ID = worker_id
@@ -2523,6 +2526,7 @@ def executar(
         log.info("Perfil alvo: %s", "Baixa tensao" if perfil == "bt" else "Media e alta tensao")
         log.info("Destino rede: %s", BASE_DIR)
         log.info("Temp local  : %s", _temp_dir_para_worker())
+        log.info("Guarda UCs : maximo %s por titular", max_ucs_por_titular)
         if offset_titulares > 0:
             log.info("Offset titulares: pulando os %s primeiros", offset_titulares)
         log.info("=" * 72)
@@ -2561,6 +2565,12 @@ def executar(
             log.info("[%s/%s] Titular %s | UCs: %s (%s ativas, %s inativas)",
                      idx_t, len(titulares), titular_preview.get("text", ""),
                      len(ucs_preview), len(ativas_preview), len(ucs_preview) - len(ativas_preview))
+            validar_expansao_ucs(
+                titular_id=titular_alvo.get("id", ""),
+                titular_texto=titular_preview.get("text", ""),
+                total_ucs=len(ucs_preview),
+                max_ucs=max_ucs_por_titular,
+            )
             _registrar_inventario(
                 titular_id=titular_alvo.get("id", ""),
                 titular_texto=titular_preview.get("text", ""),

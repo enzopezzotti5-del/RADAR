@@ -26,6 +26,9 @@ from core.downloaders.cpfl.cpfl_rge_base import (  # noqa: E402
     USUARIO_PADRAO,
     executar,
 )
+from core.downloaders.cpfl.cpfl_guard import (  # noqa: E402
+    resolver_max_ucs_por_titular,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +55,12 @@ def parse_args() -> argparse.Namespace:
         help="Pula os primeiros N titulares (para execucao paralela)",
     )
     parser.add_argument("--limite-ucs", type=int, default=0)
+    parser.add_argument(
+        "--max-ucs-por-titular",
+        type=int,
+        default=0,
+        help="Guarda de expansao; CLI > CPFL_MAX_UCS_PER_TITULAR > 368",
+    )
     parser.add_argument(
         "--forcar-download",
         action="store_true",
@@ -94,5 +103,6 @@ if __name__ == "__main__":
             offset_titulares=args.offset_titulares,
             worker_id=args.worker_id,
             forcar_download=args.forcar_download,
+            max_ucs_por_titular=resolver_max_ucs_por_titular(args.max_ucs_por_titular),
         )
     )
