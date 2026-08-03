@@ -12,10 +12,14 @@ try:
     from scripts.infra import indice_master as _legacy_indice_master
 
     MasterIndice = _legacy_indice_master.MasterIndice
+    normalizar_mes_ref = _legacy_indice_master.normalizar_mes_ref
+    chave_dedup = _legacy_indice_master.chave_dedup
     _legacy_marcar_digitados_do_auditoria = _legacy_indice_master.marcar_digitados_do_auditoria
     _FILELOCK_OK = _legacy_indice_master._FILELOCK_OK
 except Exception:  # pragma: no cover
     MasterIndice = None
+    normalizar_mes_ref = None
+    chave_dedup = None
     _legacy_marcar_digitados_do_auditoria = None
     _FILELOCK_OK = False
 
