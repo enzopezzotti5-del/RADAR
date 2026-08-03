@@ -133,3 +133,44 @@ def test_new_metric_path_reaches_sqlite_and_api(client):
     payload = client.get("/api/calendar/summary?start=2026-08-01&end=2026-08-01").get_json()
     assert payload["days"][0]["downloaded"] == 5
     assert payload["days"][0]["by_utility"][0]["run_ids"] == [run_id]
+
+
+def test_synced_metric_keeps_skipped_other_and_task_filter(client):
+    from radar_v2.app.repositories.storage import create_run, initialize_run_metrics
+    from radar_v2.app.services.run_service import RunService
+    from core.metrics.radar_metrics import build_item_key
+    import json as _json
+
+    run_id = create_run(
+        started_at="2026-08-03 10:00:00", task_id="dl_enel_ce",
+        task_name="ENEL CE", category="Downloaders", command="test",
+    )
+    initialize_run_metrics(run_id, utility="ENEL CE", task_id="dl_enel_ce")
+
+    for index, outcome in enumerate(("downloaded", "skipped_existing", "other")):
+        item_key = build_item_key(
+            utility="ENEL CE", account_id=f"UC{index}",
+            competence="2026-08", invoice_id=f"INV{index}",
+        )
+        line = "RADAR_METRIC " + _json.dumps({
+            "version": 1, "item_key": item_key, "outcome": outcome,
+            "utility": "ENEL CE", "task_id": "dl_enel_ce", "competence": "2026-08",
+        })
+        RunService._record_metric_event(run_id, "dl_enel_ce", line)
+
+    RunService._close_run_metrics(
+        run_id, "dl_enel_ce", 0,
+        dt.datetime(2026, 8, 3, 10, 0), dt.datetime(2026, 8, 3, 10, 1),
+    )
+    _login(client)
+    payload = client.get(
+        "/api/calendar/summary?start=2026-08-03&end=2026-08-03&task_id=dl_enel_ce"
+    ).get_json()
+    assert payload["totals"] == {
+        "downloaded": 1, "skipped_existing": 1, "errors": 0,
+        "other": 1, "processed": 3,
+    }
+    empty = client.get(
+        "/api/calendar/summary?start=2026-08-03&end=2026-08-03&task_id=dl_cpfl_bt"
+    ).get_json()
+    assert empty["has_metrics"] is False

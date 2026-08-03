@@ -357,21 +357,26 @@ def calendar_metric_summary(
     have data appear in the list.
     """
     ensure_db()
-    util_clause_1 = " AND utility = ?" if utility else ""
+    util_clause_1 = " AND irm.utility = ?" if utility else ""
     util_clause_2 = " AND rm.utility = ?" if utility else ""
-    p1: list = [start, end] + ([utility] if utility else [])
-    p2: list = [start, end] + ([utility] if utility else [])
+    task_clause_1 = " AND irm.task_id = ?" if task_id else ""
+    task_clause_2 = " AND rm.task_id = ?" if task_id else ""
+    p1: list = [start, end] + ([utility] if utility else []) + ([task_id] if task_id else [])
+    p2: list = [start, end] + ([utility] if utility else []) + ([task_id] if task_id else [])
     query = f"""
         SELECT date, utility, run_id, downloaded, processed, errors,
                skipped_existing, other, metrics_complete, updated_at
         FROM (
-            SELECT metric_date as date, utility, run_id,
-                   downloaded, processed, errors,
-                   0 as skipped_existing, 0 as other,
-                   metrics_complete, updated_at
-            FROM invoice_run_metrics
-            WHERE metric_date BETWEEN ? AND ?
+            SELECT irm.metric_date as date, irm.utility, irm.run_id,
+                   irm.downloaded, irm.processed, irm.errors,
+                   coalesce(rm.skipped_existing_count, 0) as skipped_existing,
+                   coalesce(rm.other_count, 0) as other,
+                   irm.metrics_complete, irm.updated_at
+            FROM invoice_run_metrics irm
+            LEFT JOIN run_metrics rm ON rm.run_id = irm.run_id
+            WHERE irm.metric_date BETWEEN ? AND ?
             {util_clause_1}
+            {task_clause_1}
 
             UNION ALL
 
@@ -387,6 +392,7 @@ def calendar_metric_summary(
             JOIN runs r ON rm.run_id = r.id
             WHERE date(r.started_at) BETWEEN ? AND ?
             {util_clause_2}
+            {task_clause_2}
             AND rm.run_id NOT IN (SELECT run_id FROM invoice_run_metrics)
         )
         ORDER BY date, utility, run_id
