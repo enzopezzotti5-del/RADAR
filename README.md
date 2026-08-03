@@ -1,129 +1,49 @@
-# Projeto front-end para Radar - Ação Engenharia
+# Radar
 
-## 🚀 Stack Tecnológica
+Radar é a aplicação Flask/React que agenda, executa e acompanha downloaders e
+pipelines de faturas. A produção integrada usa uma única aplicação em `:5000`.
 
-- **React 19** - Biblioteca JavaScript para construção de interfaces
-- **Vite** - Build tool extremamente rápida
-- **TypeScript** - Superset tipado do JavaScript
-- **Shadcn UI** - Componentes reutilizáveis e acessíveis
-- **Tailwind CSS** - Framework CSS utility-first
-- **React Router** - Roteamento para aplicações React
-- **React Hook Form** - Gerenciamento de formulários performático
-- **Zod** - Validação de schemas TypeScript-first
-- **Recharts** - Biblioteca de gráficos para React
+## Estrutura
 
-## 📋 Pré-requisitos
+- `src/`: fonte React/Vite; `npm run build` gera `dist/`.
+- `radar_v2/`: Flask, API, scheduler, executor e watchdog.
+- `core/`: downloaders, parsers, pipelines e utilitários compartilhados.
+- `radar_v2/web/react/`: artefato React publicado pelo Flask.
+- `logs/web_app/`: banco e logs locais, criados em runtime e não versionados.
 
-- Node.js 18+
-- npm
+## Requisitos
 
-## 🔧 Instalação
+Python 3.13.13 e Node.js 22.22.0 LTS foram homologados. Node não é versionado.
 
-```bash
-npm install
-```
-
-## 💻 Scripts Disponíveis
-
-### Desenvolvimento
-
-```bash
-# Iniciar servidor de desenvolvimento
-npm start
-# ou
-npm run dev
-```
-
-Abre a aplicação em modo de desenvolvimento em [http://localhost:5173](http://localhost:5173).
-
-### Build
-
-```bash
-# Build para produção
-npm run build
-
-# Build para desenvolvimento
-npm run build:dev
-```
-
-Gera os arquivos otimizados para produção na pasta `dist/`.
-
-### Preview
-
-```bash
-# Visualizar build de produção localmente
-npm run preview
-```
-
-Permite visualizar a build de produção localmente antes do deploy.
-
-### Linting e Formatação
-
-```bash
-# Executar linter
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+npm ci
 npm run lint
-
-# Executar linter e corrigir problemas automaticamente
-npm run lint:fix
-
-# Formatar código com Oxfmt
-npm run format
-```
-
-## 📁 Estrutura do Projeto
-
-```
-.
-├── src/              # Código fonte da aplicação
-├── public/           # Arquivos estáticos
-├── dist/             # Build de produção (gerado)
-├── node_modules/     # Dependências (gerado)
-└── package.json      # Configurações e dependências do projeto
-```
-
-## 🎨 Componentes UI
-
-Este template inclui uma biblioteca completa de componentes Shadcn UI baseados em Radix UI:
-
-- Accordion
-- Alert Dialog
-- Avatar
-- Button
-- Checkbox
-- Dialog
-- Dropdown Menu
-- Form
-- Input
-- Label
-- Select
-- Switch
-- Tabs
-- Toast
-- Tooltip
-- E muito mais...
-
-## 📝 Ferramentas de Qualidade de Código
-
-- **TypeScript**: Tipagem estática
-- **Oxlint**: Linter extremamente rápido
-- **Oxfmt**: Formatação automática de código
-
-## 🔄 Workflow de Desenvolvimento
-
-1. Instale as dependências: `npm install`
-2. Inicie o servidor de desenvolvimento: `npm start`
-3. Faça suas alterações
-4. Verifique o código: `npm run lint`
-5. Formate o código: `npm run format`
-6. Crie a build: `npm run build`
-7. Visualize a build: `npm run preview`
-
-## 📦 Build e Deploy
-
-Para criar uma build otimizada para produção:
-
-```bash
 npm run build
 ```
 
-Os arquivos otimizados serão gerados na pasta `dist/` e estarão prontos para deploy.
+O último passo de publicação do artefato deve ser feito somente em uma janela
+de manutenção, após backup e com o Radar parado: `robocopy /MIR` substitui o
+conteúdo publicado em `radar_v2/web/react/`.
+
+Copie `.env.example` para `.env` e preencha somente as integrações necessárias.
+Nunca versione esse arquivo.
+
+## Produção
+
+`scripts/start_radar.ps1` determina a raiz via `$PSScriptRoot` e inicia o
+watchdog. O watchdog inicia `radar_v2/run_server.py`, verifica `/health` e usa
+porta 5000 por padrão. Consulte `docs/PRODUCAO.md` e `docs/INSTALACAO.md`.
+
+## Testes
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall -q radar_v2 core
+.\.venv\Scripts\python.exe -m pytest tests -q
+npm run check:api-contract
+npm test
+```
+
+`npm test` ainda não possui testes de interface; os testes de regressão do
+backend devem usar banco temporário, nunca o SQLite operacional.

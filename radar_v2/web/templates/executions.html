@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Execuções{% endblock %}
+{% block page_title %}Execuções{% endblock %}
+{% block breadcrumb %}Operação{% endblock %}
+{% block header_subtitle %}Catálogo de pipelines, disparo manual e acompanhamento das execuções em tempo real.{% endblock %}
+
+{% block content %}
+<div class="kpi-row">
+  <div class="kpi-card kpi-card--primary">
+    <div class="kpi-card__label">Rodando agora</div>
+    <div class="kpi-card__value" id="kpi-running">—</div>
+  </div>
+  <div class="kpi-card kpi-card--success">
+    <div class="kpi-card__label">Sucesso hoje</div>
+    <div class="kpi-card__value" id="kpi-success">—</div>
+  </div>
+  <div class="kpi-card kpi-card--error">
+    <div class="kpi-card__label">Falhas hoje</div>
+    <div class="kpi-card__value" id="kpi-error">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">Taxa de sucesso</div>
+    <div class="kpi-card__value" id="kpi-rate">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">Duração média</div>
+    <div class="kpi-card__value" id="kpi-avg">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">Agendamentos ativos</div>
+    <div class="kpi-card__value" id="kpi-scheds">—</div>
+  </div>
+</div>
+
+<div class="split-pane">
+  <aside class="split-pane__side" id="catalog"></aside>
+
+  <div class="split-pane__main">
+    <div id="task-form-area"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Execuções ativas</div>
+          <div class="text-secondary small">Disparos em andamento e ações rápidas sobre cada run.</div>
+        </div>
+        <span id="live-count" class="badge bg-primary-lt text-primary" style="display:none"></span>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Tarefa</th>
+              <th>Categoria</th>
+              <th>Status</th>
+              <th>Início</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="live-runs-body">
+            <tr><td colspan="6" class="empty-state">Nenhuma execução ativa</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Histórico recente</div>
+          <div class="text-secondary small">Últimas execuções concluídas, com acesso ao log e rerun.</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Tarefa</th>
+              <th>Categoria</th>
+              <th>Status</th>
+              <th>Início</th>
+              <th>Duração</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="7" class="empty-state">Nenhuma execução no histórico</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module" src="{{ url_for('static', filename='js/pages/executions.js') }}"></script>
+{% endblock %}

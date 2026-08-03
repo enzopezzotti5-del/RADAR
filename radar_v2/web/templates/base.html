@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Radar V2{% endblock %} - Ação Engenharia</title>
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem("radar-theme") || "auto";
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = saved === "dark" || (saved === "auto" && prefersDark) ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.setAttribute("data-bs-theme", theme);
+        document.documentElement.style.colorScheme = theme;
+      } catch (_) {
+        document.documentElement.dataset.theme = "light";
+        document.documentElement.setAttribute("data-bs-theme", "light");
+      }
+    })();
+  </script>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='brand/favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler/tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="layout-fluid">
+<div class="page radar-shell">
+  <aside class="radar-sidebar">
+    <a class="radar-sidebar-brand" href="{{ url_for('executions') }}" aria-label="Radar V2">
+      <img
+        src="{{ url_for('static', filename='brand/radar_logo_horizontal_dark.png') }}"
+        alt="Radar V2 - Ação Engenharia"
+        class="radar-sidebar-brand-image brand-logo brand-logo-light"
+      >
+      <img
+        src="{{ url_for('static', filename='brand/radar_logo_horizontal_light.png') }}"
+        alt="Radar V2 - Ação Engenharia"
+        class="radar-sidebar-brand-image brand-logo brand-logo-dark"
+      >
+    </a>
+
+    <div class="radar-sidebar-kicker">Operação</div>
+    <nav class="radar-sidebar-nav" aria-label="Navegação principal">
+      <a href="{{ url_for('painel') }}" class="radar-sidebar-link {% if request.path == '/painel' %}active{% endif %}">
+        <span class="radar-sidebar-link__icon" aria-hidden="true">▣</span>
+        <span>Painel</span>
+      </a>
+      <a href="{{ url_for('executions') }}" class="radar-sidebar-link {% if request.path == '/executions' %}active{% endif %}">
+        <span class="radar-sidebar-link__icon" aria-hidden="true">▶</span>
+        <span>Execuções</span>
+      </a>
+      <a href="{{ url_for('watcher_page') }}" class="radar-sidebar-link {% if request.path.startswith('/watcher') %}active{% endif %}">
+        <span class="radar-sidebar-link__icon" aria-hidden="true">◉</span>
+        <span>Watcher</span>
+      </a>
+      <a href="{{ url_for('schedules') }}" class="radar-sidebar-link {% if request.path == '/schedules' %}active{% endif %}">
+        <span class="radar-sidebar-link__icon" aria-hidden="true">◷</span>
+        <span>Agendamentos</span>
+      </a>
+      <a href="{{ url_for('historico') }}" class="radar-sidebar-link {% if request.path == '/historico' %}active{% endif %}">
+        <span class="radar-sidebar-link__icon" aria-hidden="true">▤</span>
+        <span>Histórico</span>
+      </a>
+    </nav>
+
+    <div class="radar-sidebar-footer">
+      <div class="radar-sidebar-user">
+        <div class="radar-sidebar-footer__label">Usuário</div>
+        <div class="radar-sidebar-footer__text">{{ session.get("username", "Radar") }}</div>
+      </div>
+
+      <div class="radar-sidebar-theme">
+        <label class="form-label radar-sidebar-theme__label" for="radar-theme-select">Tema</label>
+        <select id="radar-theme-select" class="form-select form-select-sm" data-radar-theme-select aria-label="Selecionar tema">
+          <option value="light">Claro</option>
+          <option value="dark">Escuro</option>
+          <option value="auto">Automático</option>
+        </select>
+      </div>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm w-100 radar-logout-btn" onclick="window.RadarApp?.logout()">
+        Sair
+      </button>
+    </div>
+  </aside>
+
+  <div class="page-main">
+    <header class="page-header d-print-none radar-page-header">
+      <div class="container-xl">
+        <div class="radar-page-header__row">
+          <div class="radar-page-header__content">
+            {% if self.breadcrumb() %}
+            <div class="page-pretitle">
+              {% block breadcrumb %}{% endblock %}
+            </div>
+            {% endif %}
+            <h1 class="page-title">
+              {% block page_title %}{% endblock %}
+            </h1>
+            {% if self.header_subtitle() %}
+            <div class="text-secondary mt-1 radar-page-header__subtitle">
+              {% block header_subtitle %}{% endblock %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="radar-page-header__actions">
+            {% block topbar_actions %}{% endblock %}
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div class="container-xl">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="drawer-overlay" class="drawer-overlay" role="presentation"></div>
+<div id="drawer" class="drawer" role="dialog" aria-label="Logs da execução" aria-modal="true">
+  <div class="drawer__header">
+    <div class="drawer__title-wrap">
+      <span id="drawer-title" class="drawer__title">Logs</span>
+      <span id="drawer-status-badge" class="badge badge-category"></span>
+    </div>
+    <div class="drawer__actions">
+      <button id="drawer-rerun" class="btn btn-sm btn-outline-primary" style="display:none" type="button">
+        Rerun
+      </button>
+      <button id="drawer-close" class="btn btn-sm btn-icon btn-ghost" type="button" aria-label="Fechar painel de logs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div class="drawer__body">
+    <div id="drawer-console" class="log-console"></div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/tabler/tabler.min.js') }}" defer></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

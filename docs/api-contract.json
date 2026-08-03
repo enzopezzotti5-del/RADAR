@@ -10,6 +10,7 @@
   "endpoints": [
     { "method": "GET", "path": "/health" },
     { "method": "GET", "path": "/api/health" },
+    { "method": "GET", "path": "/api/session", "public": true },
     { "method": "GET", "path": "/api/tasks" },
     { "method": "GET", "path": "/api/dashboard" },
     { "method": "GET", "path": "/api/runs/live", "query": ["status"] },

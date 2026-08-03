@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Acesso - Radar V2{% endblock %}</title>
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem("radar-theme") || "auto";
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = saved === "dark" || (saved === "auto" && prefersDark) ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.setAttribute("data-bs-theme", theme);
+        document.documentElement.style.colorScheme = theme;
+      } catch (_) {
+        document.documentElement.dataset.theme = "light";
+        document.documentElement.setAttribute("data-bs-theme", "light");
+      }
+    })();
+  </script>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='brand/favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler/tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="auth-body">
+  <header class="auth-topbar">
+    <div class="auth-topbar__brand">
+      <img src="{{ url_for('static', filename='brand/radar_logo_horizontal_dark.png') }}" alt="Radar V2 - Ação Engenharia" class="brand-logo brand-logo-light">
+      <img src="{{ url_for('static', filename='brand/radar_logo_horizontal_light.png') }}" alt="Radar V2 - Ação Engenharia" class="brand-logo brand-logo-dark">
+    </div>
+    <div class="auth-topbar__actions">
+      <label class="form-label sr-only" for="auth-theme-select">Tema</label>
+      <select id="auth-theme-select" class="form-select form-select-sm" data-radar-theme-select aria-label="Selecionar tema">
+        <option value="light">Claro</option>
+        <option value="dark">Escuro</option>
+        <option value="auto">Automático</option>
+      </select>
+    </div>
+  </header>
+
+  <main class="auth-shell">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/tabler/tabler.min.js') }}" defer></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,265 @@
+/* App shell and page framing */
+
+.radar-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.radar-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--radar-sidebar-bg);
+  border-right: 1px solid var(--radar-sidebar-border);
+  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.04);
+  overflow: auto;
+  backdrop-filter: blur(14px);
+}
+
+.radar-sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 3rem;
+  padding: 0.25rem 0.15rem 0;
+}
+
+.radar-sidebar-brand-image {
+  display: block;
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+}
+
+.radar-sidebar-kicker {
+  color: var(--radar-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.radar-sidebar-nav {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.radar-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid transparent;
+  color: var(--radar-text);
+  background: transparent;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.radar-sidebar-link:hover {
+  background: var(--radar-sidebar-link-hover);
+  border-color: color-mix(in srgb, var(--radar-primary) 12%, transparent);
+  color: var(--radar-primary);
+  text-decoration: none;
+}
+
+.radar-sidebar-link.active {
+  background: var(--radar-sidebar-active);
+  border-color: var(--radar-sidebar-active-border);
+  box-shadow: inset 3px 0 0 var(--radar-primary);
+  color: var(--radar-primary);
+}
+
+.radar-sidebar-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  color: inherit;
+  flex: 0 0 auto;
+  opacity: 0.9;
+}
+
+.radar-sidebar-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--radar-sidebar-border);
+}
+
+.radar-sidebar-footer__label {
+  color: var(--radar-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.radar-sidebar-footer__text {
+  margin-top: 0.25rem;
+  color: var(--radar-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.radar-sidebar-theme__label {
+  margin-bottom: 0.3rem;
+}
+
+.radar-logout-btn {
+  border-color: var(--radar-border-strong);
+}
+
+.page-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.radar-page-header {
+  padding: 1.05rem 0 0.6rem;
+}
+
+.radar-page-header .container-xl {
+  max-width: 1680px;
+}
+
+.radar-page-header__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--radar-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--radar-surface) 82%, transparent);
+  box-shadow: var(--radar-shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.radar-page-header__content {
+  min-width: 0;
+}
+
+.radar-page-header__subtitle {
+  max-width: 68ch;
+}
+
+.radar-page-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.radar-page-header .page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 1rem + 0.95vw, 1.95rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.radar-page-header .page-pretitle {
+  margin-bottom: 0.25rem;
+  color: var(--radar-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page-body {
+  padding: 0.75rem 0 2rem;
+}
+
+.page-body > .container-xl {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 1680px;
+}
+
+.radar-surface {
+  background: color-mix(in srgb, var(--radar-surface) 72%, transparent);
+  border: 1px solid var(--radar-border);
+  box-shadow: var(--radar-shadow-md);
+  backdrop-filter: blur(14px);
+}
+
+.brand-logo-dark {
+  display: none;
+}
+
+[data-theme="dark"] .brand-logo-light,
+[data-bs-theme="dark"] .brand-logo-light {
+  display: none;
+}
+
+[data-theme="dark"] .brand-logo-dark,
+[data-bs-theme="dark"] .brand-logo-dark {
+  display: block;
+}
+
+@media (max-width: 1199.98px) {
+  .radar-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .radar-sidebar {
+    padding: 0.9rem;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .radar-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .radar-sidebar {
+    position: relative;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--radar-border);
+  }
+
+  .radar-sidebar-footer {
+    margin-top: 0.5rem;
+  }
+
+  .radar-page-header {
+    padding-top: 0.85rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .radar-page-header__row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .radar-page-header__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .radar-sidebar-brand-image {
+    max-width: 150px;
+  }
+}
