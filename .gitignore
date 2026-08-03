@@ -90,3 +90,10 @@ core/downloaders/**/temp*/
 
 # Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
 core.[0-9]*
+
+# Radar → Orbit handoff: outbox e arquivos em trânsito são estado operacional.
+# Apenas o código (orbit_handoff.py) e os testes são versionados.
+handoff/orbit/outbox/
+handoff/orbit/archive/
+handoff/orbit/*.json
+handoff/orbit/*.pdf
