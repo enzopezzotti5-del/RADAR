@@ -26,7 +26,8 @@ GROUPS = {
 
 def policy_for(task_id: str) -> DownloaderPolicy:
     group = next((value for prefix, value in GROUPS.items() if task_id.startswith(prefix)), "OTHER")
-    return DownloaderPolicy(resource_group=group)
+    timeout = 28800 if group in {"CPFL_RGE", "NEOENERGIA"} else 14400
+    return DownloaderPolicy(resource_group=group, timeout_seconds=timeout)
 
 
 class DownloaderHealthService:

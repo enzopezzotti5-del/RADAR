@@ -46,6 +46,7 @@ from ..repositories.storage import (
 )
 from .preflight_service import ENV_FILE, REQUIRED_ENV_KEYS, TaskPreflightError
 from .metric_events import ProgressEvent, parse_metric_event, parse_progress_event
+from .downloader_health_service import policy_for
 
 ROOT_DIR    = Path(__file__).resolve().parent.parent.parent.parent
 RUN_LOG_DIR = APP_DATA_DIR / "run_logs"
@@ -214,6 +215,14 @@ class RunService:
 
     # ── lançamento ────────────────────────────────────────────────────────────
 
+    def _find_resource_conflict(self, task_id: str) -> LiveRun | None:
+        requested_group = policy_for(task_id).resource_group
+        return next((
+            run for run in self._live.values()
+            if run.exit_code is None and run.task_id.startswith("dl_")
+            and policy_for(run.task_id).resource_group == requested_group
+        ), None)
+
     def launch(self, task_id: str, task_name: str, category: str,
                args: list[str], *, allow_parallel: bool = False) -> LiveRun:
         if self._preflight is not None:
@@ -226,6 +235,13 @@ class RunService:
 
         self._reconcile_all()
         with self._lock:
+            if task_id.startswith("dl_"):
+                requested_group = policy_for(task_id).resource_group
+                conflicting = self._find_resource_conflict(task_id)
+                if conflicting:
+                    raise RunConflictError(
+                        f"Recurso {requested_group} ocupado por {conflicting.task_id} (run {conflicting.run_id})."
+                    )
             # CEMIG usa navegador e pasta de download proprios; nunca permita
             # outra execucao, inclusive pelo botao de rerun.
             if task_id == "dl_cemig":

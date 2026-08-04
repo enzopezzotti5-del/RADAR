@@ -34,3 +34,13 @@ def test_resource_policy_is_bounded():
     assert policy.max_instances == 1
     assert policy.max_retries < 3
     assert policy.timeout_seconds > 0
+
+
+def test_same_resource_group_conflicts_even_for_different_tasks(tmp_path, monkeypatch):
+    from radar_v2.app.services import run_service
+    monkeypatch.setattr(run_service, "RUN_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(run_service, "RUN_METRICS_DIR", tmp_path / "metrics")
+    service = run_service.RunService()
+    service._live[10] = SimpleNamespace(task_id="dl_cpfl_bt", run_id=10, exit_code=None)
+    assert service._find_resource_conflict("dl_rge_bt").run_id == 10
+    assert service._find_resource_conflict("dl_enel_sp") is None
