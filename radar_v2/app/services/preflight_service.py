@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import py_compile
 import sqlite3
 import tempfile
 from dataclasses import asdict, dataclass
@@ -57,7 +58,13 @@ class PreflightResult:
         return self.status == "READY"
 
     def to_dict(self) -> dict:
-        return {"status": self.status, "issues": [asdict(issue) for issue in self.issues]}
+        official = "PREFLIGHT_PASS" if self.ready else (
+            "BLOCKED_EXTERNAL" if self.status == "BLOCKED_EXTERNAL" else "PREFLIGHT_FAIL"
+        )
+        return {
+            "status": self.status, "official_status": official,
+            "issues": [asdict(issue) for issue in self.issues],
+        }
 
 
 class TaskPreflightError(RuntimeError):
@@ -204,6 +211,13 @@ class PreflightService:
             script = self.project_root / script
         if not script.is_file():
             issues.append(PreflightIssue("BLOCKED_MISSING_FILE", "entrypoint", str(script)))
+        else:
+            try:
+                py_compile.compile(str(script), doraise=True)
+            except py_compile.PyCompileError as exc:
+                issues.append(PreflightIssue(
+                    "BLOCKED_OTHER", "entrypoint_compile", exc.exc_type_name,
+                ))
         if not self.python_exe.is_file():
             issues.append(PreflightIssue("BLOCKED_INVALID_PATH", "python", str(self.python_exe)))
         if not self.project_root.is_dir():

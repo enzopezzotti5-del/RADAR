@@ -78,6 +78,17 @@ METRIC_TASKS = {
 }
 
 
+RESULT_CONTRACT = {
+    0: ("success", "Concluído"),
+    3: ("skipped", "Sem entrada"),
+}
+
+
+def result_for_exit_code(exit_code: int) -> tuple[str, str]:
+    """Return the persisted status and UI label for an autonomous task."""
+    return RESULT_CONTRACT.get(int(exit_code), ("error", "Falhou"))
+
+
 class RunConflictError(RuntimeError):
     pass
 
@@ -347,7 +358,7 @@ class RunService:
 
         history = next((r for r in list_runs(limit=400) if int(r["id"]) == run_id), None)
         status_text = {
-            "running": "Rodando", "success": "Concluído", "error": "Falhou",
+            "running": "Rodando", "success": "Concluído", "skipped": "Sem entrada", "error": "Falhou",
         }.get((history or {}).get("status", "").lower(), (history or {}).get("status") or "-")
 
         lines = self._read_log_file(run_id)
@@ -537,13 +548,13 @@ class RunService:
             if run is None or run.exit_code is not None:
                 return
             run.exit_code    = int(exit_code)
-            run.status_text  = "Concluído" if exit_code == 0 else "Falhou"
+            status, display = result_for_exit_code(exit_code)
+            run.status_text = display
             started_at = run.started_at
         finished_at = dt.datetime.now()
         duration_s  = (finished_at - started_at).total_seconds()
-        status = "success" if exit_code == 0 else "error"
         finish_run(run_id, finished_at.strftime("%Y-%m-%d %H:%M:%S"), status, exit_code, duration_s)
-        if exit_code != 0:
+        if status == "error":
             self._append_log(
                 run_id,
                 f"[FAILURE] TYPE=EXECUTION STAGE=SUBPROCESS EXIT_CODE={exit_code} DURATION={duration_s:.1f}s",
@@ -571,7 +582,7 @@ class RunService:
         utility = counts.get("utility", "")
         if not utility:
             return None
-        complete = exit_code == 0
+        complete = exit_code in (0, 3)
         try:
             set_run_metrics_complete(run_id, complete=complete)
         except Exception:
