@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,13 +32,14 @@ def test_legacy_launcher_python_is_derived_from_project_root():
 
 def test_server_loads_project_env_when_started_from_other_cwd(tmp_path: Path):
     code = (
-        "import os; from radar_v2.app.api.server import PROJECT_ROOT; "
-        "raise SystemExit(0 if PROJECT_ROOT.name == 'Radar' and os.environ.get('RADAR_V2_SECRET_KEY') else 2)"
+        "import os; from pathlib import Path; from radar_v2.app.api.server import PROJECT_ROOT; "
+        "raise SystemExit(0 if PROJECT_ROOT == Path(os.environ['RADAR_EXPECTED_ROOT']) else 2)"
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT_DIR)
+    env["RADAR_EXPECTED_ROOT"] = str(ROOT_DIR)
     result = subprocess.run(
-        [str(ROOT_DIR / ".venv" / "Scripts" / "python.exe"), "-c", code],
+        [sys.executable, "-c", code],
         cwd=tmp_path, env=env, timeout=60,
     )
     assert result.returncode == 0
