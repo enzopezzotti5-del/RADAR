@@ -594,7 +594,20 @@ def count_enabled_schedules() -> int:
 def toggle_schedule(schedule_id: int, enabled: bool) -> None:
     ensure_db()
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("UPDATE schedules SET enabled=? WHERE id=?", (int(enabled), schedule_id))
+        if enabled:
+            row = conn.execute(
+                "SELECT frequency,time_of_day,day_of_week,day_of_month FROM schedules WHERE id=?",
+                (schedule_id,),
+            ).fetchone()
+            if row is None:
+                return
+            next_run_at = compute_next_run(row[0], row[1], row[2], row[3])
+            conn.execute(
+                "UPDATE schedules SET enabled=1,next_run_at=? WHERE id=?",
+                (next_run_at, schedule_id),
+            )
+        else:
+            conn.execute("UPDATE schedules SET enabled=0 WHERE id=?", (schedule_id,))
         conn.commit()
 
 
