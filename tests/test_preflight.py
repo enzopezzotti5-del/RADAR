@@ -122,6 +122,20 @@ def test_operator_can_block_known_bad_task_without_blocking_global_scheduler(tmp
     assert result.issues[0].requirement == "operator_block"
 
 
+def test_manual_captcha_is_an_external_autonomy_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    script = tmp_path / "ceb.py"
+    script.touch()
+    monkeypatch.setattr(preflight_service, "_browser_path", lambda: tmp_path / "chrome.exe")
+    monkeypatch.setattr(preflight_service, "_module_missing", lambda _name: False)
+    task = SimpleNamespace(task_id="dl_neo_ceb", script="ceb.py")
+    result = PreflightService(project_root=tmp_path).check_task(task)
+    assert result.status == "BLOCKED_EXTERNAL"
+    assert result.to_dict()["official_status"] == "BLOCKED_EXTERNAL"
+
+
 def test_copel_pipeline_missing_month_directory_is_blocked_before_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     python = tmp_path / ".venv" / "Scripts" / "python.exe"
     python.parent.mkdir(parents=True)

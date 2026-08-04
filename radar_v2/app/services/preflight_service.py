@@ -78,6 +78,7 @@ class TaskPreflightError(RuntimeError):
 def _status_for(issues: Iterable[PreflightIssue]) -> str:
     codes = {issue.code for issue in issues}
     priority = (
+        "BLOCKED_EXTERNAL",
         "BLOCKED_MISSING_ENV", "BLOCKED_MISSING_FILE", "BLOCKED_MISSING_LIBRARY",
         "BLOCKED_INVALID_PATH", "BLOCKED_BROWSER", "BLOCKED_PERMISSION", "BLOCKED_OTHER",
     )
@@ -201,6 +202,11 @@ class PreflightService:
 
     def check_task(self, task, args: list[str] | None = None) -> PreflightResult:
         issues: list[PreflightIssue] = []
+        if task.task_id == "dl_neo_ceb":
+            issues.append(PreflightIssue(
+                "BLOCKED_EXTERNAL", "captcha_manual",
+                "portal exige resolucao humana; nao e autonomo pelo scheduler",
+            ))
         if task.task_id in _operator_blocked_tasks():
             issues.append(PreflightIssue(
                 "BLOCKED_OTHER", "operator_block",
