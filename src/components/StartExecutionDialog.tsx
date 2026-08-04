@@ -25,6 +25,7 @@ interface StartExecutionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onStarted: () => void
+  initialTaskId?: string
 }
 
 interface ExecutionParameters {
@@ -54,6 +55,7 @@ export function StartExecutionDialog({
   open,
   onOpenChange,
   onStarted,
+  initialTaskId,
 }: StartExecutionDialogProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [taskId, setTaskId] = useState('')
@@ -79,7 +81,11 @@ export function StartExecutionDialog({
           return
         }
 
-        setTasks(Object.values(data.tasks).flat())
+        const allTasks = Object.values(data.tasks).flat()
+        setTasks(allTasks)
+        if (initialTaskId && allTasks.some((t) => t.task_id === initialTaskId)) {
+          setTaskId(initialTaskId)
+        }
       } catch (error) {
         console.error('Falha ao carregar tarefas:', error)
 
@@ -104,7 +110,7 @@ export function StartExecutionDialog({
     return () => {
       active = false
     }
-  }, [open, toast])
+  }, [open, toast, initialTaskId])
 
   const selectedTask = tasks.find((task) => task.task_id === taskId)
 
