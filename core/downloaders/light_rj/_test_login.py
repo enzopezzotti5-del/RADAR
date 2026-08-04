@@ -92,6 +92,10 @@ def parse_args() -> argparse.Namespace:
         default=INICIO_LOTE,
         help="Indice inicial 1-based da UC na planilha para retomar o lote.",
     )
+    parser.add_argument(
+        "--preflight", action="store_true",
+        help="Valida browser, login, modal e campo inicial sem carregar UCs ou baixar arquivos.",
+    )
     return parser.parse_args()
 
 
@@ -743,8 +747,6 @@ def processar_uc(
 
 def main() -> int:
     args = parse_args()
-    master, master_mod = carregar_master()
-    ucs_lote = carregar_ucs_planilha(PLANILHA_UCS)
     driver = criar_driver()
     wait = WebDriverWait(driver, 20)
 
@@ -759,6 +761,12 @@ def main() -> int:
         aguardar_area_uc(driver, timeout=max(10, int(args.timeout_modal)))
         print(f"Area da UC pronta. URL={driver.current_url}")
         salvar_html(driver, "area_logada")
+        if args.preflight:
+            print("PREFLIGHT_PASS: login, modal e campo inicial validados; nenhum download iniciado.")
+            return 0
+
+        master, master_mod = carregar_master()
+        ucs_lote = carregar_ucs_planilha(PLANILHA_UCS)
         main_handle = driver.current_window_handle
 
         print(
