@@ -109,6 +109,7 @@ class LiveRun:
     status_text: str = "Rodando"
     exit_code:   int | None = None
     progress: ProgressEvent | None = None
+    retry_attempt: int = 0
 
     @property
     def pid(self) -> int | None:
@@ -224,7 +225,8 @@ class RunService:
         ), None)
 
     def launch(self, task_id: str, task_name: str, category: str,
-               args: list[str], *, allow_parallel: bool = False) -> LiveRun:
+               args: list[str], *, allow_parallel: bool = False,
+               retry_attempt: int = 0) -> LiveRun:
         if self._preflight is not None:
             result = self._preflight.check_task_id(task_id, args=args)
             if not result.ready:
@@ -299,6 +301,7 @@ class RunService:
                 run_id=run_id, task_id=task_id, task_name=task_name,
                 category=category, args=args, command=command,
                 command_signature=sig, started_at=started_at, process=proc,
+                retry_attempt=retry_attempt,
             )
             self._live[run_id] = run
 
@@ -321,6 +324,11 @@ class RunService:
         self._spawn_reader(run_id, proc.stdout, prefix="")
         self._spawn_reader(run_id, proc.stderr, prefix="[ERR] ")
         threading.Thread(target=self._wait, args=(run_id,), daemon=True).start()
+        if task_id.startswith("dl_"):
+            timeout = policy_for(task_id).timeout_seconds
+            timeout_timer = threading.Timer(timeout, self._timeout_run, args=(run_id, timeout))
+            timeout_timer.daemon = True
+            timeout_timer.start()
         return run
 
     def rerun(self, run_id: int) -> LiveRun:
@@ -579,12 +587,44 @@ class RunService:
         if metric_log:
             self._append_log(run_id, f"[METRICS] {metric_log}")
         self._append_log(run_id, f"[END] exit={exit_code} duração={duration_s:.1f}s")
+        if status == "error" and exit_code != 130 and run.task_id.startswith("dl_"):
+            policy = policy_for(run.task_id)
+            if run.retry_attempt < policy.max_retries:
+                self._append_log(
+                    run_id,
+                    f"[RETRY] attempt={run.retry_attempt + 1}/{policy.max_retries} "
+                    f"backoff={policy.retry_interval_seconds}s",
+                )
+                retry_timer = threading.Timer(
+                    policy.retry_interval_seconds, self._retry_run, args=(run,),
+                )
+                retry_timer.daemon = True
+                retry_timer.start()
         try:
             log_text = "\n".join(self._read_log_file(run_id))
             if log_text:
                 save_run_log(run_id, log_text)
         except Exception:
             pass
+
+    def _retry_run(self, previous: LiveRun) -> None:
+        try:
+            self.launch(
+                previous.task_id, previous.task_name, previous.category,
+                list(previous.args), retry_attempt=previous.retry_attempt + 1,
+            )
+        except RunConflictError as exc:
+            self._append_log(previous.run_id, f"[RETRY] cancelado por conflito: {exc}")
+        except Exception as exc:
+            self._append_log(previous.run_id, f"[RETRY] falhou ao iniciar: {type(exc).__name__}")
+
+    def _timeout_run(self, run_id: int, timeout_seconds: int) -> None:
+        with self._lock:
+            run = self._live.get(run_id)
+        if run is None or run.exit_code is not None:
+            return
+        self._append_log(run_id, f"[TIMEOUT] limite de {timeout_seconds}s excedido; encerrando arvore.")
+        self._kill_tree(run)
 
     @staticmethod
     def _close_run_metrics(

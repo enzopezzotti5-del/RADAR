@@ -44,3 +44,16 @@ def test_same_resource_group_conflicts_even_for_different_tasks(tmp_path, monkey
     service._live[10] = SimpleNamespace(task_id="dl_cpfl_bt", run_id=10, exit_code=None)
     assert service._find_resource_conflict("dl_rge_bt").run_id == 10
     assert service._find_resource_conflict("dl_enel_sp") is None
+
+
+def test_timeout_stops_only_the_target_live_run(tmp_path, monkeypatch):
+    from radar_v2.app.services import run_service
+    monkeypatch.setattr(run_service, "RUN_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(run_service, "RUN_METRICS_DIR", tmp_path / "metrics")
+    service = run_service.RunService()
+    target = SimpleNamespace(task_id="dl_enel_sp", run_id=20, exit_code=None, log_lines=[])
+    service._live[20] = target
+    stopped = []
+    monkeypatch.setattr(service, "_kill_tree", stopped.append)
+    service._timeout_run(20, 60)
+    assert stopped == [target]
