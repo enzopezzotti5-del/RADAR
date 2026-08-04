@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import argparse
 import importlib.util as _ilu
 import logging
 import os
@@ -18,6 +19,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import pdfplumber
 from openpyxl import load_workbook
@@ -1054,7 +1058,7 @@ def processar_uc(
 # MAIN
 # =============================================================================
 
-def main() -> None:
+def main(*, preflight: bool = False) -> None:
     global BASE_DIR, PLANILHA_PATH, INDICE_LOCAL_PATH, LOG_DIR
     try:
         BASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1077,8 +1081,8 @@ def main() -> None:
     log.info("=" * 62)
 
     grupos = carregar_planilha(PLANILHA_PATH)
-    master = _carregar_master()
-    baixados = _carregar_indice_local()
+    master = None if preflight else _carregar_master()
+    baixados = set() if preflight else _carregar_indice_local()
 
     resultados_todos: List[dict] = []
     total_grupos = len(grupos)
@@ -1107,6 +1111,11 @@ def main() -> None:
             ucs_portal = _obter_ucs_da_tabela(driver)
             log.info("Portal retornou %d UC(s) na tabela", len(ucs_portal))
             log.debug("UCs lidas do portal: %s", [u["uc_raw"] for u in ucs_portal])
+            if preflight:
+                if not ucs_portal:
+                    raise RuntimeError("preflight: tabela inicial de UCs vazia")
+                log.info("PREFLIGHT_PASS: login e tabela de UCs validados; nenhum download iniciado.")
+                return
 
             for idx_uc, linha in enumerate(ucs_grupo, 1):
                 if idx_uc > 1:
@@ -1194,4 +1203,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Downloader ENEL RJ")
+    parser.add_argument("--preflight", action="store_true")
+    cli_args = parser.parse_args()
+    main(preflight=cli_args.preflight)
