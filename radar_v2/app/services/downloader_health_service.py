@@ -74,7 +74,8 @@ class DownloaderHealthService:
                 health = "DISABLED"
             items.append({
                 "task_id": task.task_id, "utility": task.name.removeprefix("Downloader "),
-                "enabled": enabled, "preflight_status": preflight.status,
+                "enabled": enabled,
+                "preflight_status": preflight.to_dict()["official_status"],
                 "last_run": last.get("started_at") if last else None,
                 "last_status": last.get("status") if last else None,
                 "last_success": last_success.get("finished_at") if last_success else None,
