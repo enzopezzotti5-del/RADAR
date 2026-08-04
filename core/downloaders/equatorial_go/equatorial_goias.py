@@ -2746,6 +2746,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignora a lista especifica e processa todas as UCs da planilha.",
     )
+    parser.add_argument(
+        "--preflight", action="store_true",
+        help="Valida login e tela de segunda via com uma UC, sem baixar arquivos.",
+    )
     return parser.parse_args()
 
 
@@ -2775,6 +2779,22 @@ def main() -> None:
     if not unidades:
         logger.info("Nenhuma UC encontrada na planilha.")
         return
+
+    if args.preflight:
+        primeira = unidades[0]
+        ger_preflight = GerenciadorDriver()
+        try:
+            driver = ger_preflight.obter()
+            abrir_login(driver)
+            if not efetuar_login(driver, primeira.instalacao, primeira.cnpj):
+                raise RuntimeError("preflight: login nao confirmado")
+            fechar_modal_pos_login(driver)
+            abrir_segunda_via(driver)
+            listar_ucs_segunda_via(driver)
+            logger.info("PREFLIGHT_PASS: login e segunda via validados; nenhum download iniciado.")
+            return
+        finally:
+            ger_preflight.fechar()
 
     master   = carregar_master()
     baixados = _carregar_indice_local()
