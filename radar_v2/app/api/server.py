@@ -22,6 +22,7 @@ from ..services.run_service import RunService
 from ..services.schedule_service import ScheduleService
 from ..services.task_catalog_service import TaskCatalogService
 from ..services.preflight_service import PreflightService
+from ..services.downloader_health_service import DownloaderHealthService
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "templates"
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "static"
@@ -109,6 +110,7 @@ def create_app() -> Flask:
 
     catalog = TaskCatalogService()
     preflight = PreflightService(catalog)
+    downloader_health = DownloaderHealthService(catalog, preflight)
     global_preflight = preflight.global_report()
     preflight_log = logging.getLogger("radar_v2.preflight")
     preflight_log.info("ENV_FILE_LOADED: %s", global_preflight["env_file_loaded"])
@@ -135,6 +137,7 @@ def create_app() -> Flask:
     app.extensions["task_catalog"] = catalog
     app.extensions["schedule_service"] = sched_svc
     app.extensions["preflight_service"] = preflight
+    app.extensions["downloader_health_service"] = downloader_health
     app.extensions["react_dist"] = REACT_DIST
 
     app.register_blueprint(api_bp)

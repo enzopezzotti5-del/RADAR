@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { FileText, Play } from 'lucide-react'
 
 import { LogPanel } from '@/components/LogPanel'
+import { StartExecutionDialog } from '@/components/StartExecutionDialog'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +24,7 @@ export default function Executions() {
   const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([])
   const [logRunId, setLogRunId] = useState<string | null>(null)
   const [logPanelOpen, setLogPanelOpen] = useState(false)
+  const [startDialogOpen, setStartDialogOpen] = useState(false)
 
   const loadLive = async () => {
     try {
@@ -59,7 +61,14 @@ export default function Executions() {
             Acompanhe a fila, as execucoes em andamento e o historico das tarefas.
           </p>
         </div>
-        {isLegacyReadOnlyMode && <span className="text-sm text-muted-foreground">Modo somente leitura</span>}
+        <div className="flex items-center gap-2">
+          {isLegacyReadOnlyMode && <span className="text-sm text-muted-foreground">Modo somente leitura</span>}
+          {!isLegacyReadOnlyMode && (
+            <Button onClick={() => setStartDialogOpen(true)}>
+              <Play className="mr-2 h-4 w-4" /> Nova Execucao
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -158,6 +167,15 @@ export default function Executions() {
       </div>
 
       <LogPanel runId={logRunId} open={logPanelOpen} onOpenChange={setLogPanelOpen} />
+
+      <StartExecutionDialog
+        open={startDialogOpen}
+        onOpenChange={setStartDialogOpen}
+        onStarted={() => {
+          void loadLive()
+          void loadHistory()
+        }}
+      />
     </div>
   )
 }

@@ -97,6 +97,12 @@ MASTER_PY_LOCAL  = Path(__file__).resolve().parent.parent.parent / "indice_maste
 
 URL_LOGIN = "https://www.copel.com/avaweb/paginaLogin/login.jsf"
 
+
+def autonomous_exit_code(downloaded: int, errors: int) -> int:
+    if errors:
+        return 1
+    return 0 if downloaded else 3
+
 # Tempos (segundos)
 T_LOGIN    = 60
 T_EL       = 15
@@ -1392,7 +1398,7 @@ def main() -> int:
         log("=" * 60)
         log(f"Concluído — baixados: {ok_total} | pulados: {skip_total} | erros: {erro_total}", "OK")
         log("=" * 60)
-        return 0
+        return autonomous_exit_code(ok_total, erro_total)
 
     except KeyboardInterrupt:
         log("Interrompido pelo usuário.", "WARN")

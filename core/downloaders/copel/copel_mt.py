@@ -61,6 +61,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from core.project_paths import resolve_copel_accessos_xls
 
+
+def autonomous_exit_code(downloaded: int, errors: int) -> int:
+    if errors:
+        return 1
+    return 0 if downloaded else 3
+
 try:
     from core.metrics.radar_metrics import emit_outcome as _emit_copel_outcome
     def _emit(outcome: str, *, instalacao: str, mes_ref: str, carimbo: str = "") -> None:
@@ -1402,7 +1408,7 @@ def main() -> int:
         log("=" * 60)
         log(f"Concluido — baixados: {ok_total} | pulados: {skip_total} | erros: {erro_total}", "OK")
         log("=" * 60)
-        return 0
+        return autonomous_exit_code(ok_total, erro_total)
 
     except KeyboardInterrupt:
         log("Interrompido pelo usuario.", "WARN")

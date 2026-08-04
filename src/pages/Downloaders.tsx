@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, RefreshCcw, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Play, RefreshCcw, Trash2 } from 'lucide-react'
 
 import { RobotFormDialog } from '@/components/RobotFormDialog'
+import { StartExecutionDialog } from '@/components/StartExecutionDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +54,8 @@ export default function Downloaders() {
   const [tasks, setTasks] = useState<Robot[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [startDialogOpen, setStartDialogOpen] = useState(false)
+  const [startTaskId, setStartTaskId] = useState<string | undefined>(undefined)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     Downloaders: false,
     Pipelines: false,
@@ -94,6 +97,11 @@ export default function Downloaders() {
 
     return grouped
   }, [tasks])
+
+  const handleRun = (robot: Robot) => {
+    setStartTaskId(robot.task_id || undefined)
+    setStartDialogOpen(true)
+  }
 
   const handleEdit = (robot: Robot) => {
     if (isLegacyReadOnlyMode) {
@@ -312,6 +320,15 @@ export default function Downloaders() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              {!isLegacyReadOnlyMode && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleRun(robot)}
+                                >
+                                  <Play className="mr-1 h-3.5 w-3.5" /> Executar
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -376,6 +393,16 @@ export default function Downloaders() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <StartExecutionDialog
+        open={startDialogOpen}
+        onOpenChange={(open) => {
+          setStartDialogOpen(open)
+          if (!open) setStartTaskId(undefined)
+        }}
+        initialTaskId={startTaskId}
+        onStarted={() => void loadData()}
+      />
     </div>
   )
 }

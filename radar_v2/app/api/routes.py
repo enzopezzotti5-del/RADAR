@@ -18,6 +18,7 @@ def _run()  : return current_app.extensions["run_service"]
 def _cat()  : return current_app.extensions["task_catalog"]
 def _sched(): return current_app.extensions["schedule_service"]
 def _preflight(): return current_app.extensions["preflight_service"]
+def _downloader_health(): return current_app.extensions["downloader_health_service"]
 
 
 # ── health ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,11 @@ def preflight_status():
         "global": service.global_report(),
         "tasks": service.all_tasks_report(),
     })
+
+
+@bp.get("/downloaders/health")
+def downloader_health():
+    return jsonify({"ok": True, **_downloader_health().report()})
 
 
 # ── runs ──────────────────────────────────────────────────────────────────────

@@ -78,6 +78,15 @@ URL_LOGIN = (
     "&prompt=login"
     "&response_mode=query"
 )
+
+
+def autonomous_batch_exit_code(*, candidates: int, completed: int, technical_errors: int) -> int:
+    """Keep technical failures distinct from a valid run with no new input."""
+    if technical_errors:
+        return 1
+    if candidates == 0 or completed == 0:
+        return 3
+    return 0
 URL_CADASTRO = "https://www.cpfl.com.br/agencia/area-cliente/cadastro"
 URL_RESELECIONAR = "https://www.cpfl.com.br/agencia/area-cliente/selecionar-perfil-instalacao"
 USUARIO_PADRAO = "denise.souza@acaoengenharia.com.br"
@@ -2540,6 +2549,9 @@ def executar(
     global _WORKER_ID
     _WORKER_ID = worker_id
     driver = None
+    candidates = 0
+    completed = 0
+    technical_errors = 0
     try:
         log.info("=" * 72)
         log.info("CPFL / RGE - WORKER %s", worker_id)
@@ -2578,7 +2590,11 @@ def executar(
             try:
                 titular_preview, ucs_preview = abrir_titular_e_instalacoes(driver, perfil, titular_alvo)
             except Exception as exc:
+                technical_errors += 1
                 log.info("[%s/%s] Falha ao abrir titular %s: %s", idx_t, len(titulares), titular_alvo.get("text", ""), exc)
+                if "invalid session id" in str(exc).lower():
+                    log.error("Sessao do navegador perdida; lote interrompido para evitar falso sucesso.")
+                    break
                 continue
 
             ativas_preview = [item for item in ucs_preview if item.get("status") == "ATIVA"]
@@ -2634,6 +2650,7 @@ def executar(
                              puladas, ucs_antes, len(ucs_para_rodar))
 
             for idx_local, uc_item in enumerate(ucs_para_rodar, start=1):
+                candidates += 1
                 uc_valor = uc_item["uc"]
                 log.info("-" * 72)
                 log.info(
@@ -2656,9 +2673,11 @@ def executar(
                         forcar_download=forcar_download,
                     )
                     log.info("Resultado UC: %s", res)
+                    completed += 1
                     if not lote:
                         return 0
                 except PerfilIndisponivelError as exc:
+                    technical_errors += 1
                     res = {
                         "status": "PERFIL_MT_INDISPONIVEL" if perfil == "mt" else "PERFIL_INDISPONIVEL",
                         "titular": titular_alvo.get("text", ""),
@@ -2669,6 +2688,7 @@ def executar(
                     if not lote:
                         return 1
                 except Exception as exc:
+                    technical_errors += 1
                     log.error("Falha ao processar titular %s / UC %s: %s", titular_alvo.get("text", ""), uc_valor, exc)
                     try:
                         artefatos_erro_uc = _snapshot_debug(driver, "cpfl_rge_erro_uc_lote")
@@ -2680,7 +2700,9 @@ def executar(
                         pass
                     if not lote:
                         raise
-        return 0
+        return autonomous_batch_exit_code(
+            candidates=candidates, completed=completed, technical_errors=technical_errors,
+        )
     except Exception as exc:
         log.error("Falha no login CPFL/RGE: %s", exc)
         if driver is not None:

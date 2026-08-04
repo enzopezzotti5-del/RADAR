@@ -74,8 +74,8 @@ else:
 
 
 try:
-from core.metrics.radar_metrics import emit_outcome as _emit_outcome
-from radar_v2.app.services.orbit_handoff import request_orbit_handoff
+    from core.metrics.radar_metrics import emit_outcome as _emit_outcome
+    from radar_v2.app.services.orbit_handoff import request_orbit_handoff
     def _emit_metric(outcome: str, *, uc: str, ref: str, belnr: str) -> None:
         _emit_outcome(outcome, utility="ENEL SP", account_id=uc, competence=ref, invoice_id=belnr)
 except Exception:

@@ -46,6 +46,7 @@ from ..repositories.storage import (
 )
 from .preflight_service import ENV_FILE, REQUIRED_ENV_KEYS, TaskPreflightError
 from .metric_events import ProgressEvent, parse_metric_event, parse_progress_event
+from .downloader_health_service import policy_for
 
 ROOT_DIR    = Path(__file__).resolve().parent.parent.parent.parent
 RUN_LOG_DIR = APP_DATA_DIR / "run_logs"
@@ -76,6 +77,17 @@ METRIC_TASKS = {
     "dl_celesc_mt":     "CELESC MT",
     "dl_equatorial_go": "EQUATORIAL GO",
 }
+
+
+RESULT_CONTRACT = {
+    0: ("success", "Concluído"),
+    3: ("skipped", "Sem entrada"),
+}
+
+
+def result_for_exit_code(exit_code: int) -> tuple[str, str]:
+    """Return the persisted status and UI label for an autonomous task."""
+    return RESULT_CONTRACT.get(int(exit_code), ("error", "Falhou"))
 
 
 class RunConflictError(RuntimeError):
@@ -203,6 +215,14 @@ class RunService:
 
     # ── lançamento ────────────────────────────────────────────────────────────
 
+    def _find_resource_conflict(self, task_id: str) -> LiveRun | None:
+        requested_group = policy_for(task_id).resource_group
+        return next((
+            run for run in self._live.values()
+            if run.exit_code is None and run.task_id.startswith("dl_")
+            and policy_for(run.task_id).resource_group == requested_group
+        ), None)
+
     def launch(self, task_id: str, task_name: str, category: str,
                args: list[str], *, allow_parallel: bool = False) -> LiveRun:
         if self._preflight is not None:
@@ -215,6 +235,13 @@ class RunService:
 
         self._reconcile_all()
         with self._lock:
+            if task_id.startswith("dl_"):
+                requested_group = policy_for(task_id).resource_group
+                conflicting = self._find_resource_conflict(task_id)
+                if conflicting:
+                    raise RunConflictError(
+                        f"Recurso {requested_group} ocupado por {conflicting.task_id} (run {conflicting.run_id})."
+                    )
             # CEMIG usa navegador e pasta de download proprios; nunca permita
             # outra execucao, inclusive pelo botao de rerun.
             if task_id == "dl_cemig":
@@ -347,7 +374,7 @@ class RunService:
 
         history = next((r for r in list_runs(limit=400) if int(r["id"]) == run_id), None)
         status_text = {
-            "running": "Rodando", "success": "Concluído", "error": "Falhou",
+            "running": "Rodando", "success": "Concluído", "skipped": "Sem entrada", "error": "Falhou",
         }.get((history or {}).get("status", "").lower(), (history or {}).get("status") or "-")
 
         lines = self._read_log_file(run_id)
@@ -537,13 +564,13 @@ class RunService:
             if run is None or run.exit_code is not None:
                 return
             run.exit_code    = int(exit_code)
-            run.status_text  = "Concluído" if exit_code == 0 else "Falhou"
+            status, display = result_for_exit_code(exit_code)
+            run.status_text = display
             started_at = run.started_at
         finished_at = dt.datetime.now()
         duration_s  = (finished_at - started_at).total_seconds()
-        status = "success" if exit_code == 0 else "error"
         finish_run(run_id, finished_at.strftime("%Y-%m-%d %H:%M:%S"), status, exit_code, duration_s)
-        if exit_code != 0:
+        if status == "error":
             self._append_log(
                 run_id,
                 f"[FAILURE] TYPE=EXECUTION STAGE=SUBPROCESS EXIT_CODE={exit_code} DURATION={duration_s:.1f}s",
@@ -571,7 +598,7 @@ class RunService:
         utility = counts.get("utility", "")
         if not utility:
             return None
-        complete = exit_code == 0
+        complete = exit_code in (0, 3)
         try:
             set_run_metrics_complete(run_id, complete=complete)
         except Exception:
