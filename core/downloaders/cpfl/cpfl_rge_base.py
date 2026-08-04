@@ -2545,6 +2545,7 @@ def executar(
     worker_id: int = 0,
     forcar_download: bool = False,
     max_ucs_por_titular: int = 368,
+    preflight: bool = False,
 ) -> int:
     global _WORKER_ID
     _WORKER_ID = worker_id
@@ -2576,6 +2577,9 @@ def executar(
         titulares = listar_titulares_disponiveis(driver, perfil)
         if not titulares:
             raise RuntimeError("Nenhum titular foi retornado para o perfil selecionado.")
+        if preflight:
+            log.info("PREFLIGHT_PASS: login, perfil e lista de titulares validados; nenhum download iniciado.")
+            return 0
 
         if offset_titulares > 0:
             titulares = titulares[offset_titulares:]

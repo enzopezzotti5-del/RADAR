@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--indice-uc-ativa", type=int, default=0)
     parser.add_argument("--perfil", choices=["bt"], default="bt")
     parser.add_argument("--lote", action="store_true")
+    parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--limite-titulares", type=int, default=0)
     parser.add_argument(
         "--offset-titulares",
@@ -104,5 +105,6 @@ if __name__ == "__main__":
             worker_id=args.worker_id,
             forcar_download=args.forcar_download,
             max_ucs_por_titular=resolver_max_ucs_por_titular(args.max_ucs_por_titular),
+            preflight=args.preflight,
         )
     )
