@@ -1,5 +1,7 @@
 const apiBase = (import.meta.env.VITE_RADAR_API_BASE || '/api').replace(/\/$/, '')
-const readOnly = (import.meta.env.VITE_RADAR_READ_ONLY || 'true').toLowerCase() === 'true'
+// Operational Flask integration is the default. Set the variable to true only
+// when intentionally publishing a read-only mirror.
+const readOnly = (import.meta.env.VITE_RADAR_READ_ONLY || 'false').toLowerCase() === 'true'
 
 export const isLegacyCompatEnabled =
   (import.meta.env.VITE_RADAR_DATA_SOURCE || 'flask').toLowerCase() === 'flask'
