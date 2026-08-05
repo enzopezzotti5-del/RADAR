@@ -22,9 +22,8 @@ import {
   type LegacyCompatDashboardStats,
 } from '@/services/legacyCompat'
 
-const legacyUiMode = (import.meta.env.VITE_LEGACY_UI_MODE || '').toLowerCase()
 export const isLegacyHomologationMode = false
-export const isLegacyReadOnlyMode = isLegacyCompatEnabled && (legacyUiMode !== 'homologation' || !isFlaskIntegrationEnabled)
+export const isLegacyReadOnlyMode = isLegacyCompatEnabled && !isFlaskIntegrationEnabled
 
 function toFlaskSchedulePayload(data: Record<string, any>) {
   const [, hour = '8', , , weekdays = '0'] = String(data.cron_expression || '').split(/\s+/)

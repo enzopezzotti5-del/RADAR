@@ -28,7 +28,7 @@ const chartColors: Record<CalendarStatus, string> = {
 const EMPTY_RUNS: CalendarRun[] = []
 
 function InvoiceMetricsUnavailable({ selectedDay, error }: { selectedDay: Date; error: string }) {
-  const metricNames = ['Processadas', 'Baixadas', 'Puladas', 'Erros', 'Outros']
+  const metricNames = ['Processadas', 'Baixadas', 'Erros', 'Outros']
 
   return <>
     <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
@@ -37,7 +37,7 @@ function InvoiceMetricsUnavailable({ selectedDay, error }: { selectedDay: Date; 
     </div>
     <div>
       <h3 className="mb-3 text-lg font-semibold">Faturas de {formatDay(selectedDay)}</h3>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {metricNames.map((label) => <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 text-sm font-medium text-muted-foreground">Sem dados detalhados</p></CardContent></Card>)}
       </div>
     </div>
@@ -141,11 +141,10 @@ export default function Calendar() {
   ), [invoiceSummary, selectedDay, concessionariaFilter])
   const selectedInvoiceTotals = useMemo(() => selectedInvoiceRows.reduce((total, row) => ({
     downloaded: total.downloaded + row.downloaded,
-    skipped_existing: total.skipped_existing + row.skipped_existing,
     errors: total.errors + row.errors,
     other: total.other + row.other,
-    processed: total.processed + row.processed,
-  }), { downloaded: 0, skipped_existing: 0, errors: 0, other: 0, processed: 0 }), [selectedInvoiceRows])
+    processed: total.processed + row.downloaded + row.errors + row.other,
+  }), { downloaded: 0, errors: 0, other: 0, processed: 0 }), [selectedInvoiceRows])
 
   const gridDays = useMemo(() => eachDayOfInterval({
     start: startOfWeek(visibleMonth, { weekStartsOn: 0 }),
@@ -164,7 +163,7 @@ export default function Calendar() {
   const invoiceDayChart = useMemo(() => selectedInvoiceRows.map((row) => ({ concessionaria: row.utility, ...row })), [selectedInvoiceRows])
   const invoiceMonthChart = useMemo(() => eachDayOfInterval({ start: visibleMonth, end: endOfMonth(visibleMonth) }).map((day) => {
     const row = (invoiceSummary?.days || []).find((item) => item.date === dateKey(day))
-    return { day: day.getDate(), date: dateKey(day), downloaded: row?.downloaded || 0, skipped_existing: row?.skipped_existing || 0, errors: row?.errors || 0, other: row?.other || 0, hasMetrics: Boolean(row) }
+    return { day: day.getDate(), date: dateKey(day), downloaded: row?.downloaded || 0, errors: row?.errors || 0, other: row?.other || 0, hasMetrics: Boolean(row) }
   }), [visibleMonth, invoiceSummary])
 
   const selectMonth = (month: Date) => {
@@ -223,8 +222,8 @@ export default function Calendar() {
                   {counts.cancelado > 0 && <div className="text-orange-600">{counts.cancelado} cancel.</div>}
                   {(counts.aguardando + counts.parando + counts.outros) > 0 && <div className="text-muted-foreground">{counts.aguardando + counts.parando + counts.outros} outros</div>}
                 </div>}
-                {view === 'faturas' && invoiceDay?.has_metrics && <div className="mt-2 space-y-0.5 text-[11px]"><div className="text-emerald-600">B {invoiceDay.downloaded}</div><div className="text-amber-600">P {invoiceDay.skipped_existing}</div><div className="text-destructive">E {invoiceDay.errors}</div></div>}
-                {view === 'faturas' && !invoiceDay?.has_metrics && runs.length > 0 && <div className="mt-2 text-[11px] text-muted-foreground">Sem detalhe</div>}
+                {view === 'faturas' && invoiceDay && <div className="mt-2 space-y-0.5 text-[11px]"><div className="text-emerald-600">B {invoiceDay.downloaded}</div><div className="text-destructive">E {invoiceDay.errors}</div></div>}
+                {view === 'faturas' && !invoiceDay && runs.length > 0 && <div className="mt-2 text-[11px] text-muted-foreground">Sem detalhe</div>}
               </button>
             })}
           </div>
@@ -232,14 +231,14 @@ export default function Calendar() {
       </Card>
 
       {view === 'faturas' && !hasInvoiceMetricsForFilter ? <InvoiceMetricsUnavailable selectedDay={selectedDay} error={invoiceError} /> : view === 'faturas' ? <>
-      <div><h3 className="mb-3 text-lg font-semibold">Faturas de {formatDay(selectedDay)}</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div><h3 className="mb-3 text-lg font-semibold">Faturas de {formatDay(selectedDay)}</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ['Processadas', selectedInvoiceTotals.processed, 'text-foreground'], ['Baixadas', selectedInvoiceTotals.downloaded, 'text-emerald-600'], ['Puladas', selectedInvoiceTotals.skipped_existing, 'text-amber-600'], ['Erros', selectedInvoiceTotals.errors, 'text-destructive'], ['Outros', selectedInvoiceTotals.other, 'text-foreground'],
+          ['Processadas', selectedInvoiceTotals.processed, 'text-foreground'], ['Baixadas', selectedInvoiceTotals.downloaded, 'text-emerald-600'], ['Erros', selectedInvoiceTotals.errors, 'text-destructive'], ['Outros', selectedInvoiceTotals.other, 'text-foreground'],
         ].map(([label, value, tone]) => <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className={`mt-1 text-2xl font-bold ${tone}`}>{value}</p>{selectedInvoiceDay && !selectedInvoiceDay.metrics_complete && <p className="mt-1 text-xs text-amber-700">Parcial</p>}</CardContent></Card>)}
       </div></div>
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card><CardHeader><CardTitle>Faturas de {formatDay(selectedDay)} por concessionaria</CardTitle></CardHeader><CardContent><div className="h-80">{invoiceDayChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={invoiceDayChart} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="concessionaria" width={100} /><Tooltip /><Legend /><Bar dataKey="downloaded" name="Baixadas" stackId="invoice" fill="#22c55e" /><Bar dataKey="skipped_existing" name="Puladas" stackId="invoice" fill="#f59e0b" /><Bar dataKey="errors" name="Erros" stackId="invoice" fill="#ef4444" /><Bar dataKey="other" name="Outros" stackId="invoice" fill="#94a3b8" /></BarChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sem dados detalhados para os filtros selecionados.</div>}</div></CardContent></Card>
-        <Card><CardHeader><CardTitle className="capitalize">Faturas de {formatMonth(visibleMonth)}</CardTitle></CardHeader><CardContent><div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={invoiceMonthChart} onClick={(event) => { const row = event?.activePayload?.[0]?.payload as { date?: string } | undefined; const day = row?.date ? dateFromKey(row.date) : null; if (day) setSelectedDay(day) }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Legend /><Bar dataKey="downloaded" name="Baixadas" stackId="invoice" fill="#22c55e" /><Bar dataKey="skipped_existing" name="Puladas" stackId="invoice" fill="#f59e0b" /><Bar dataKey="errors" name="Erros" stackId="invoice" fill="#ef4444" /></BarChart></ResponsiveContainer></div></CardContent></Card>
+        <Card><CardHeader><CardTitle>Faturas de {formatDay(selectedDay)} por concessionaria</CardTitle></CardHeader><CardContent><div className="h-80">{invoiceDayChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={invoiceDayChart} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="concessionaria" width={100} /><Tooltip /><Legend /><Bar dataKey="downloaded" name="Baixadas" stackId="invoice" fill="#22c55e" /><Bar dataKey="errors" name="Erros" stackId="invoice" fill="#ef4444" /><Bar dataKey="other" name="Outros" stackId="invoice" fill="#94a3b8" /></BarChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sem dados detalhados para os filtros selecionados.</div>}</div></CardContent></Card>
+        <Card><CardHeader><CardTitle className="capitalize">Faturas de {formatMonth(visibleMonth)}</CardTitle></CardHeader><CardContent><div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={invoiceMonthChart} onClick={(event) => { const row = event?.activePayload?.[0]?.payload as { date?: string } | undefined; const day = row?.date ? dateFromKey(row.date) : null; if (day) setSelectedDay(day) }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Legend /><Bar dataKey="downloaded" name="Baixadas" stackId="invoice" fill="#22c55e" /><Bar dataKey="errors" name="Erros" stackId="invoice" fill="#ef4444" /></BarChart></ResponsiveContainer></div></CardContent></Card>
       </div>
       </> : <>
       <div><h3 className="mb-3 text-lg font-semibold">Resumo de {formatDay(selectedDay)}</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
