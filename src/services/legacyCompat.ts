@@ -195,7 +195,7 @@ function mapRun(run: any): LegacyCompatExecution {
 export async function getCompatRobots(): Promise<LegacyCompatRobot[]> {
   const payload = await radarRead<{ tasks?: Record<string, any[]> }>('/tasks')
   return Object.entries(payload.tasks || {}).flatMap(([category, tasks]) =>
-    tasks.map((task) => ({
+    tasks.filter((task) => category === 'Downloaders' && String(task.task_id).startsWith('dl_')).map((task) => ({
       id: String(task.task_id),
       name: String(task.name || task.task_id),
       task_id: String(task.task_id),

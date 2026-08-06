@@ -158,6 +158,7 @@ export const tasksApi = {
 
     for (const robot of robots) {
       const task = mapRobotToTask(robot)
+      if (task.category !== 'Downloaders' || !task.task_id.startsWith('dl_')) continue
       const category = task.category || 'Downloaders'
       if (!grouped[category]) grouped[category] = []
       grouped[category].push(task)
