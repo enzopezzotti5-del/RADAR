@@ -29,6 +29,7 @@ import requests
 import shutil
 import sys
 import time
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
@@ -45,6 +46,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from core.downloaders.cpfl.cpfl_guard import validar_expansao_ucs
+from core.downloaders.cpfl.cpfl_inventory import (
+    append_pdf_sha,
+    ensure_canonical_inventory,
+    load_pdf_sha_index,
+    sha256_file,
+)
 
 
 ROOT_LOCAL = Path(__file__).resolve().parents[2]
@@ -108,7 +115,12 @@ TEMP_DOWNLOAD_DIR = Path.home() / "AppData" / "Local" / "cpfl_temp"
 _WORKER_ID: int = 0  # sobrescrito por --worker-id no main
 INDICE_LOCAL_PATH = BASE_DIR / "indice_faturas_cpfl.csv"
 INVENTARIO_PATH = BASE_DIR / "cpfl_ucs_inventario.csv"
+INVENTARIO_CANONICO_PATH = BASE_DIR / "cpfl_ucs_canonical.csv"
+INVENTARIO_METRICS_PATH = BASE_DIR / "cpfl_ucs_canonical_metrics.json"
+PDF_SHA_INDEX_PATH = BASE_DIR / "cpfl_pdf_sha256.csv"
 MASTER_PY_PATH = ROOT_LOCAL.parent / "scripts" / "infra" / "indice_master.py"
+_PDF_SHA_INDEX: dict[str, str] = {}
+_PDF_DUPLICATES_BY_SHA = 0
 
 
 def _configurar_logging() -> logging.Logger:
@@ -2483,8 +2495,30 @@ def processar_uma_uc_lote(
             }
 
     # ── Registro comum (ambos caminhos) ────────────────────────────────────
+    global _PDF_DUPLICATES_BY_SHA
+    pdf_sha = sha256_file(pdf_baixado)
+    duplicate_path = _PDF_SHA_INDEX.get(pdf_sha)
+    if duplicate_path and Path(duplicate_path).exists():
+        _PDF_DUPLICATES_BY_SHA += 1
+        pdf_baixado.unlink(missing_ok=True)
+        log.info("PDF duplicado por SHA256; original preservado em %s", duplicate_path)
+        if mes_ref:
+            _emit("skipped_existing", uc=uc, mes_ref=mes_ref)
+        return {
+            "status": "DUPLICATE_SHA",
+            "titular": titular.get("text", ""),
+            "uc": uc,
+            "mes_ref": mes_ref,
+            "sha256": pdf_sha,
+            "arquivo_existente": duplicate_path,
+        }
+    if duplicate_path:
+        _PDF_SHA_INDEX.pop(pdf_sha, None)
+
     indice_bb = master.consumir_carimbo() if master else f"BB_{2000000 + len(baixados):07d}"
     destino = _mover_pdf_para_destino(pdf_baixado, perfil, mes_ref or "sem_mes_ref", indice_bb)
+    _PDF_SHA_INDEX[pdf_sha] = str(destino.resolve())
+    append_pdf_sha(PDF_SHA_INDEX_PATH, pdf_sha, destino)
     if master and mes_ref:
         master.registrar(
             indice_bb=indice_bb,
@@ -2547,12 +2581,15 @@ def executar(
     max_ucs_por_titular: int = 368,
     preflight: bool = False,
 ) -> int:
-    global _WORKER_ID
+    global _WORKER_ID, _PDF_SHA_INDEX, _PDF_DUPLICATES_BY_SHA
     _WORKER_ID = worker_id
+    _PDF_DUPLICATES_BY_SHA = 0
     driver = None
     candidates = 0
     completed = 0
     technical_errors = 0
+    pdfs_downloaded = 0
+    pdfs_already_existed = 0
     try:
         log.info("=" * 72)
         log.info("CPFL / RGE - WORKER %s", worker_id)
@@ -2570,6 +2607,13 @@ def executar(
             log.info("Falha ao carregar master; seguindo sem indice master: %s", exc)
         baixados = _carregar_indice_local()
         log.info("Indice local CPFL: %s registros", len(baixados))
+        canonical_rows, inventory_metrics = ensure_canonical_inventory(
+            INVENTARIO_PATH, INVENTARIO_CANONICO_PATH, INVENTARIO_METRICS_PATH,
+        )
+        _PDF_SHA_INDEX = load_pdf_sha_index(PDF_SHA_INDEX_PATH)
+        log.info("CPFL_INVENTORY_METRICS %s", json.dumps(inventory_metrics, sort_keys=True))
+        log.info("Inventario canonico: %s UCs ativas | %s hashes conhecidos",
+                 len(canonical_rows), len(_PDF_SHA_INDEX))
         driver = build_driver(headless=headless)
         fazer_login(driver, usuario, senha)
         aguardar_pos_login(driver)
@@ -2581,6 +2625,36 @@ def executar(
             log.info("PREFLIGHT_PASS: login, perfil e lista de titulares validados; nenhum download iniciado.")
             return 0
 
+        portal_by_id = {
+            str(item.get("id") or "").strip(): item
+            for item in titulares if str(item.get("id") or "").strip()
+        }
+        canonical_by_holder: dict[str, list[dict]] = defaultdict(list)
+        for row in canonical_rows:
+            if str(row.get("PERFIL") or "").strip().lower() != perfil.lower():
+                continue
+            holder_id = str(row.get("TITULAR_ID") or "").strip()
+            if holder_id:
+                canonical_by_holder[holder_id].append({
+                    "uc": str(row.get("UC") or "").strip(),
+                    "status": "ATIVA",
+                    "linha": str(row.get("LINHA") or "").strip(),
+                })
+
+        canonical_targets = []
+        missing_holders = 0
+        for holder_id, holder_ucs in canonical_by_holder.items():
+            portal_holder = portal_by_id.get(holder_id)
+            if portal_holder is None:
+                missing_holders += 1
+                continue
+            canonical_targets.append({**portal_holder, "_canonical_ucs": holder_ucs})
+        if not canonical_targets:
+            raise RuntimeError("Inventario canonico nao possui titulares acessiveis no portal para o perfil selecionado.")
+        if missing_holders:
+            log.warning("Inventario canonico: %s titular(es) historicos nao estao mais acessiveis.", missing_holders)
+        titulares = canonical_targets
+
         if offset_titulares > 0:
             titulares = titulares[offset_titulares:]
 
@@ -2591,15 +2665,20 @@ def executar(
             titulares = titulares[:1]
 
         for idx_t, titular_alvo in enumerate(titulares, start=1):
-            try:
-                titular_preview, ucs_preview = abrir_titular_e_instalacoes(driver, perfil, titular_alvo)
-            except Exception as exc:
-                technical_errors += 1
-                log.info("[%s/%s] Falha ao abrir titular %s: %s", idx_t, len(titulares), titular_alvo.get("text", ""), exc)
-                if "invalid session id" in str(exc).lower():
-                    log.error("Sessao do navegador perdida; lote interrompido para evitar falso sucesso.")
-                    break
-                continue
+            canonical_ucs = titular_alvo.get("_canonical_ucs")
+            if canonical_ucs is not None:
+                titular_preview = titular_alvo
+                ucs_preview = list(canonical_ucs)
+            else:
+                try:
+                    titular_preview, ucs_preview = abrir_titular_e_instalacoes(driver, perfil, titular_alvo)
+                except Exception as exc:
+                    technical_errors += 1
+                    log.info("[%s/%s] Falha ao abrir titular %s: %s", idx_t, len(titulares), titular_alvo.get("text", ""), exc)
+                    if "invalid session id" in str(exc).lower():
+                        log.error("Sessao do navegador perdida; lote interrompido para evitar falso sucesso.")
+                        break
+                    continue
 
             ativas_preview = [item for item in ucs_preview if item.get("status") == "ATIVA"]
             log.info("[%s/%s] Titular %s | UCs: %s (%s ativas, %s inativas)",
@@ -2611,12 +2690,13 @@ def executar(
                 total_ucs=len(ucs_preview),
                 max_ucs=max_ucs_por_titular,
             )
-            _registrar_inventario(
-                titular_id=titular_alvo.get("id", ""),
-                titular_texto=titular_preview.get("text", ""),
-                perfil=perfil,
-                ucs=ucs_preview,
-            )
+            if canonical_ucs is None:
+                _registrar_inventario(
+                    titular_id=titular_alvo.get("id", ""),
+                    titular_texto=titular_preview.get("text", ""),
+                    perfil=perfil,
+                    ucs=ucs_preview,
+                )
             for item in ucs_preview[:30]:
                 log.info("  UC %s | %s | %s", item["uc"], item["status"], item["linha"])
 
@@ -2650,6 +2730,7 @@ def executar(
                 ]
                 puladas = ucs_antes - len(ucs_para_rodar)
                 if puladas:
+                    pdfs_already_existed += puladas
                     log.info("Pre-filtro: %s/%s UCs ja no master — puladas sem navegar. Restam: %s",
                              puladas, ucs_antes, len(ucs_para_rodar))
 
@@ -2678,6 +2759,10 @@ def executar(
                     )
                     log.info("Resultado UC: %s", res)
                     completed += 1
+                    if res.get("status") == "OK":
+                        pdfs_downloaded += 1
+                    elif res.get("status") in {"JA_MASTER", "JA_LOCAL", "DUPLICATE_SHA"}:
+                        pdfs_already_existed += 1
                     if not lote:
                         return 0
                 except PerfilIndisponivelError as exc:
@@ -2704,6 +2789,14 @@ def executar(
                         pass
                     if not lote:
                         raise
+        run_metrics = {
+            **inventory_metrics,
+            "UCS_PROCESSED": candidates,
+            "PDFS_DOWNLOADED": pdfs_downloaded,
+            "PDFS_ALREADY_EXISTED": pdfs_already_existed,
+            "PDF_DUPLICATES_BY_SHA": _PDF_DUPLICATES_BY_SHA,
+        }
+        log.info("CPFL_RUN_METRICS %s", json.dumps(run_metrics, sort_keys=True))
         return autonomous_batch_exit_code(
             candidates=candidates, completed=completed, technical_errors=technical_errors,
         )
