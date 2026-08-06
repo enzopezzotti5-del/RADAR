@@ -49,6 +49,11 @@ class TaskCatalogService:
         data = yaml.safe_load(TASKS_YAML.read_text(encoding="utf-8"))
         self._tasks = {}
         for e in data.get("tasks", []):
+            # O Radar e dono apenas da etapa de download. Os pipelines continuam
+            # versionados no YAML para auditoria historica, mas nao fazem parte
+            # do catalogo operacional nem podem ser iniciados pela interface.
+            if e.get("category") != "Downloaders" or not str(e.get("task_id", "")).startswith("dl_"):
+                continue
             t = Task(
                 task_id=e["task_id"],
                 name=e["name"],
@@ -72,6 +77,8 @@ class TaskCatalogService:
         from radar.web_app.catalog import load_tasks
         self._tasks = {}
         for old in load_tasks():
+            if old.category != "Downloaders" or not old.task_id.startswith("dl_"):
+                continue
             t = Task(
                 task_id=old.task_id,
                 name=old.name,
