@@ -109,6 +109,38 @@ def _ensure_metric_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at)")
 
 
+def _ensure_download_receipt_schema(conn: sqlite3.Connection) -> None:
+    """Canonical evidence for one physically confirmed PDF download.
+
+    This deliberately does not backfill historical files: a receipt exists only
+    when the downloader confirms a concrete file at download time.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS download_artifact_receipts (
+            receipt_id TEXT PRIMARY KEY,
+            receipt_version INTEGER NOT NULL,
+            run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+            task_id TEXT NOT NULL,
+            utility TEXT NOT NULL,
+            original_path TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            downloaded_at TEXT NOT NULL,
+            handoff_required INTEGER NOT NULL,
+            handoff_id TEXT,
+            handoff_status TEXT NOT NULL,
+            last_error TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(task_id, sha256)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_download_receipts_run ON download_artifact_receipts(run_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_download_receipts_handoff ON download_artifact_receipts(handoff_status)")
+
+
 # ── bootstrap ─────────────────────────────────────────────────────────────────
 
 def ensure_db() -> None:
@@ -180,6 +212,7 @@ def ensure_db() -> None:
             )
         """)
         _ensure_metric_schema(conn)
+        _ensure_download_receipt_schema(conn)
         conn.commit()
 
 
