@@ -96,6 +96,7 @@ except ImportError:
 
 LOGIN_CEMIG  = "MT7000037579"
 SENHA_CEMIG  = "BBCemig0101@"
+LOGIN_PASSWORD_SELECTOR = "#senha, input[name='Senha'], input[type='password']"
 
 ROOT_DIR     = Path("//10.10.250.21/Energia/ARQUIVOS ENZO")
 CEMIG_DIR    = ROOT_DIR / "DOWNLOAD CEMIG"
@@ -802,7 +803,7 @@ def fazer_login(driver, usuario: str, senha: str) -> bool:
 
     # Preenche senha
     try:
-        campo_s = W(driver, By.CSS_SELECTOR, "input[type='password']", 10)
+        campo_s = W(driver, By.CSS_SELECTOR, LOGIN_PASSWORD_SELECTOR, 10)
         campo_s.clear()
         campo_s.send_keys(senha)
     except TimeoutException:
@@ -818,7 +819,7 @@ def fazer_login(driver, usuario: str, senha: str) -> bool:
         try:
             campo = W(driver, By.CSS_SELECTOR,
                       "#userId, input[name='userId'], #Acesso, input[name='Acesso']")
-            campo_s = W(driver, By.CSS_SELECTOR, "input[type='password']", 10)
+            campo_s = W(driver, By.CSS_SELECTOR, LOGIN_PASSWORD_SELECTOR, 10)
         except (TimeoutException, StaleElementReferenceException):
             _diagnosticar_login_nao_confirmado(driver, "CEMIG_LOGIN_NAO_CONFIRMADO")
             return False

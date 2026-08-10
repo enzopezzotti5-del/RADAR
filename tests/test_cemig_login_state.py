@@ -40,3 +40,7 @@ def test_credential_guard_detects_cleared_fields(monkeypatch):
         def get_attribute(self, _): return ""
     monkeypatch.setattr(cemig, "log", lambda *args, **kwargs: None)
     assert not cemig._credenciais_preservadas(Field(), Field(), "user", "secret")
+
+
+def test_password_selector_covers_cemig_rerendered_text_input():
+    assert "#senha" in cemig.LOGIN_PASSWORD_SELECTOR
