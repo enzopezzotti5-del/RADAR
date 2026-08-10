@@ -741,6 +741,46 @@ def _injetar_captcha(driver, token: str) -> None:
     """)
 
 
+def _credenciais_preservadas(campo_usuario, campo_senha, usuario: str, senha: str) -> bool:
+    """Confere o DOM sem registrar segredos; CAPTCHA pode rerenderizar o form."""
+    usuario_atual = campo_usuario.get_attribute("value") or ""
+    senha_atual = campo_senha.get_attribute("value") or ""
+    ok = usuario_atual == usuario and senha_atual == senha
+    log(
+        "Credenciais pré-submit: "
+        f"usuario_presente={bool(usuario_atual)} usuario_len={len(usuario_atual)} "
+        f"senha_presente={bool(senha_atual)} senha_len={len(senha_atual)}",
+        "DBG",
+    )
+    return ok
+
+
+def _resultado_login(driver) -> str | None:
+    """Classifica somente evidência apresentada pelo portal, nunca o clique."""
+    url = driver.current_url or ""
+    url_lower = url.lower()
+    if "/home" in url_lower or "/entrarpoderpublico" in url_lower or "selecionar" in url_lower:
+        return "LOGIN_OK"
+    mensagens = driver.find_elements(
+        By.CSS_SELECTOR,
+        ".validation-summary-errors, .field-validation-error, .alert-danger, .alert-warning, .text-danger, [role='alert']",
+    )
+    texto = " ".join((m.text or "").strip() for m in mensagens if m.is_displayed()).lower()
+    if "captcha" in texto or "recaptcha" in texto:
+        return "CEMIG_CAPTCHA_NAO_ACEITO"
+    if texto:
+        return "LOGIN_REJEITADO"
+    return None
+
+
+def _diagnosticar_login_nao_confirmado(driver, codigo: str) -> None:
+    log(f"{codigo}: url={driver.current_url} formulario_presente={bool(driver.find_elements(By.CSS_SELECTOR, 'form'))}", "ERR")
+    try:
+        salvar_debug(driver, codigo.lower())
+    except Exception:
+        pass
+
+
 def fazer_login(driver, usuario: str, senha: str) -> bool:
     log("Abrindo portal CEMIG...")
     driver.get(f"{BASE_URL}/Login/Index")
@@ -775,6 +815,17 @@ def fazer_login(driver, usuario: str, senha: str) -> bool:
     if token:
         _injetar_captcha(driver, token)
         time.sleep(0.5)
+        try:
+            campo = W(driver, By.CSS_SELECTOR,
+                      "#userId, input[name='userId'], #Acesso, input[name='Acesso']")
+            campo_s = W(driver, By.CSS_SELECTOR, "input[type='password']", 10)
+        except (TimeoutException, StaleElementReferenceException):
+            _diagnosticar_login_nao_confirmado(driver, "CEMIG_LOGIN_NAO_CONFIRMADO")
+            return False
+        if not _credenciais_preservadas(campo, campo_s, usuario, senha):
+            _diagnosticar_login_nao_confirmado(driver, "CEMIG_LOGIN_NAO_CONFIRMADO")
+            log("Formulário foi recarregado/rerenderizado antes do submit; login não acionado.", "ERR")
+            return False
         # Clica em Entrar automaticamente
         for by, sel in [
             (By.CSS_SELECTOR, "button[type='submit']"),
@@ -784,7 +835,7 @@ def fazer_login(driver, usuario: str, senha: str) -> bool:
             try:
                 btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((by, sel)))
                 clicar(driver, btn, "btn_entrar")
-                log("Botão Entrar clicado automaticamente", "DBG")
+                log("Botão Entrar acionado — aguardando confirmação do portal.", "DBG")
                 break
             except Exception:
                 continue
@@ -793,15 +844,16 @@ def fazer_login(driver, usuario: str, senha: str) -> bool:
         log("2captcha falhou — resolva o CAPTCHA manualmente e clique Entrar.", "WARN")
         log("─" * 60)
 
-    try:
-        WebDriverWait(driver, T_LOGIN).until(lambda d: (
-            "/Home"               in d.current_url or
-            "/EntrarPoderPublico" in d.current_url or
-            "selecionar"          in d.current_url.lower()
-        ))
-    except TimeoutException:
-        salvar_debug(driver, "timeout_login")
-        log("Timeout aguardando login.", "ERR")
+    limite = time.monotonic() + T_LOGIN
+    resultado = None
+    while time.monotonic() < limite:
+        resultado = _resultado_login(driver)
+        if resultado:
+            break
+        time.sleep(0.25)
+    if resultado != "LOGIN_OK":
+        codigo = resultado or "CEMIG_LOGIN_NAO_CONFIRMADO"
+        _diagnosticar_login_nao_confirmado(driver, codigo)
         return False
 
     spinner(driver)
