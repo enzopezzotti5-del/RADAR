@@ -42,13 +42,18 @@ class EmailSyncScheduler:
             os.environ.get("RADAR_EMAIL_SYNC_INTERVAL_SECONDS", DEFAULT_INTERVAL_SECONDS)
         )
         self._lock = threading.Lock()
-        self._running = False
+        self._thread: threading.Thread | None = None
         self.last_result: dict | None = None
         self.last_run_at: str | None = None
         self.last_error: str | None = None
 
     def start(self) -> None:
-        threading.Thread(target=self._loop, daemon=True, name="radar_v2_email_sync").start()
+        if self._thread and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(
+            target=self._loop, daemon=True, name="radar_v2_email_sync"
+        )
+        self._thread.start()
 
     def _loop(self) -> None:
         while True:
@@ -92,6 +97,7 @@ class EmailSyncScheduler:
         return {
             "manifest_path": str(self._manifest_path),
             "interval_seconds": self._interval,
+            "running": bool(self._thread and self._thread.is_alive()),
             "last_run_at": self.last_run_at,
             "last_error": self.last_error,
             "last_result": self.last_result,
