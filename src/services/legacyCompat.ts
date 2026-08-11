@@ -18,7 +18,7 @@ function assertReadOnly(method?: string) {
   }
 }
 
-async function radarRead<T>(path: string): Promise<T> {
+export async function radarRead<T>(path: string): Promise<T> {
   assertReadOnly('GET')
   const response = await fetch(readUrl(path), { credentials: 'include' })
   let payload: any = null
@@ -55,11 +55,18 @@ async function radarWrite<T>(path: string, method: 'POST' | 'DELETE', body?: unk
   return payload as T
 }
 
-export async function radarSessionIsAuthenticated(): Promise<boolean> {
+export async function radarSessionStatus(): Promise<{ authenticated: boolean; authEnabled: boolean }> {
   const response = await fetch(readUrl('/session'), { credentials: 'include' })
-  if (!response.ok) return false
+  if (!response.ok) return { authenticated: false, authEnabled: true }
   const payload = await response.json().catch(() => null)
-  return Boolean(payload?.authenticated)
+  return {
+    authenticated: Boolean(payload?.authenticated),
+    authEnabled: payload?.auth_enabled !== false,
+  }
+}
+
+export async function radarSessionIsAuthenticated(): Promise<boolean> {
+  return (await radarSessionStatus()).authenticated
 }
 
 export async function radarLogin(username: string, password: string): Promise<void> {

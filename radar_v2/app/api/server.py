@@ -35,6 +35,17 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 PUBLIC_ENDPOINTS = {"login", "logout", "health", "api_v2.health", "api_v2.session_status", "static"}
 
+# Centralized auth toggle. Default is disabled: this instance is reachable
+# only on the internal corporate network (bound to 0.0.0.0 but no external
+# port-forward/firewall rule exposes it beyond the LAN), so the historical
+# permissive login screen (any non-empty username/password) added no real
+# protection and is removed from the UX. Setting RADAR_V2_AUTH_ENABLED=true
+# restores the session-gate behavior without any other code changes.
+# Read live (not frozen at import time) so tests and process-level env
+# changes both take effect without needing a module reload.
+def _auth_enabled() -> bool:
+    return os.environ.get("RADAR_V2_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -68,6 +79,8 @@ def _login_destination() -> str:
 
 
 def _is_authenticated() -> bool:
+    if not _auth_enabled():
+        return True
     return bool(session.get("authenticated"))
 
 
@@ -133,10 +146,22 @@ def create_app() -> Flask:
     else:
         logging.getLogger(__name__).info("Radar V2 scheduler desativado por ambiente.")
 
+    # Email sync is intentionally independent of the downloader preflight: it
+    # never touches IMAP/CONSEN/a browser, only a local read-only manifest
+    # file, so it should not be blocked by unrelated downloader credentials
+    # being unavailable.
+    from ..services.email_sync_scheduler import EmailSyncScheduler
+    email_sync = EmailSyncScheduler()
+    if _env_bool("RADAR_EMAIL_SYNC_ENABLED", True):
+        email_sync.start()
+    else:
+        logging.getLogger(__name__).info("Sincronizacao de e-mail desativada por ambiente.")
+
     app.extensions["run_service"] = run_svc
     app.extensions["task_catalog"] = catalog
     app.extensions["schedule_service"] = sched_svc
     app.extensions["preflight_service"] = preflight
+    app.extensions["email_sync_scheduler"] = email_sync
     app.extensions["downloader_health_service"] = downloader_health
     app.extensions["react_dist"] = REACT_DIST
 
@@ -145,6 +170,9 @@ def create_app() -> Flask:
 
     @app.before_request
     def enforce_authentication():
+        if not _auth_enabled():
+            return None
+
         endpoint = request.endpoint or ""
 
         if endpoint in PUBLIC_ENDPOINTS:
@@ -188,6 +216,9 @@ def create_app() -> Flask:
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
+        if not _auth_enabled():
+            return redirect("/")
+
         if _is_authenticated() and request.method == "GET":
             return redirect(_login_destination())
 
@@ -212,6 +243,8 @@ def create_app() -> Flask:
     @app.route("/logout", methods=["GET", "POST"])
     def logout():
         session.clear()
+        if not _auth_enabled():
+            return redirect("/")
         return redirect(url_for("login"))
 
     @app.get("/executions")

@@ -10,6 +10,7 @@ import json
 
 from flask import Blueprint, current_app, jsonify, request
 from ..repositories.storage import calendar_invoice_metrics, calendar_metric_summary
+from ..repositories import storage as _storage
 
 bp = Blueprint("api_v2", __name__, url_prefix="/api")
 
@@ -31,7 +32,10 @@ def health():
 @bp.get("/session")
 def session_status():
     from flask import session
-    return jsonify({"ok": True, "authenticated": bool(session.get("authenticated"))})
+    from .server import _auth_enabled
+    auth_enabled = _auth_enabled()
+    authenticated = bool(session.get("authenticated")) if auth_enabled else True
+    return jsonify({"ok": True, "authenticated": authenticated, "auth_enabled": auth_enabled})
 
 
 # ── tasks ─────────────────────────────────────────────────────────────────────
@@ -297,3 +301,60 @@ def preset_light_madrugada():
                         "schedules": [_serialize_sched(s) for s in _ls()]})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+# ── e-mail (read-only manifest import) ──────────────────────────────────────
+# These endpoints only ever read from RADAR's own history.sqlite3. The sync
+# itself (writing new rows) happens exclusively via the scheduled
+# "Sincronizar Faturas por Email" job in schedule_service, which is the only
+# code path that ever reads energia-automacao's manifest.jsonl.
+
+@bp.get("/email/summary")
+def email_summary():
+    return jsonify({"ok": True, **_storage.email_sync_summary(),
+                     "watermark_line": _storage.email_sync_get_watermark()})
+
+
+@bp.get("/email/history")
+def email_history():
+    limit = min(int(request.args.get("limit", 200) or 200), 1000)
+    category = request.args.get("category") or None
+    rows = _storage.email_event_history(limit=limit, category=category)
+    return jsonify({"ok": True, "events": rows, "count": len(rows)})
+
+
+@bp.get("/email/status")
+def email_status():
+    from pathlib import Path
+    manifest_path = Path(current_app.config.get(
+        "EMAIL_MANIFEST_PATH",
+        r"C:\Users\Revit\energia-automacao\runtime\email_faturas\manifest.jsonl",
+    ))
+    watermark = _storage.email_sync_get_watermark()
+    manifest_lines = 0
+    if manifest_path.is_file():
+        with manifest_path.open("r", encoding="utf-8") as fh:
+            manifest_lines = sum(1 for _ in fh)
+    scheduler = current_app.extensions.get("email_sync_scheduler")
+    return jsonify({
+        "ok": True,
+        "manifest_path_configured": str(manifest_path),
+        "manifest_reachable": manifest_path.is_file(),
+        "manifest_total_lines": manifest_lines,
+        "watermark_line": watermark,
+        "pending_lines": max(0, manifest_lines - watermark),
+        "scheduler": scheduler.status() if scheduler else None,
+    })
+
+
+@bp.post("/email/sync-now")
+def email_sync_now():
+    """Manual trigger for canary/manual verification; same idempotent path
+    the background job uses, just invoked on demand."""
+    scheduler = current_app.extensions.get("email_sync_scheduler")
+    if scheduler is None:
+        return jsonify({"ok": False, "error": "email sync scheduler indisponivel"}), 503
+    result = scheduler.run_once()
+    if result is None:
+        return jsonify({"ok": False, "error": "sincronizacao ja em andamento ou falhou; veja /api/email/status"}), 409
+    return jsonify({"ok": True, "result": result})

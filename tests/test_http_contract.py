@@ -8,8 +8,7 @@ import datetime as dt
 import pytest
 
 
-@pytest.fixture()
-def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def _make_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, auth_enabled: bool):
     # Os módulos importam estes caminhos como constantes; isolar antes de criar
     # a app impede qualquer leitura/escrita no history.sqlite3 operacional.
     from radar_v2.app.repositories import storage
@@ -17,7 +16,9 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     data_dir = tmp_path / "web_app"
     monkeypatch.setenv("RADAR_V2_SCHEDULER_ENABLED", "false")
+    monkeypatch.setenv("RADAR_EMAIL_SYNC_ENABLED", "false")
     monkeypatch.setenv("RADAR_V2_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("RADAR_V2_AUTH_ENABLED", "true" if auth_enabled else "false")
     monkeypatch.setattr(storage, "APP_DATA_DIR", data_dir)
     monkeypatch.setattr(storage, "DB_PATH", data_dir / "history.sqlite3")
     monkeypatch.setattr(storage, "LEGACY_DB", tmp_path / "legacy.sqlite3")
@@ -34,9 +35,21 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     return app.test_client()
 
 
+@pytest.fixture()
+def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Default production posture: RADAR_V2_AUTH_ENABLED=false (login screen removed)."""
+    return _make_client(monkeypatch, tmp_path, auth_enabled=False)
+
+
+@pytest.fixture()
+def client_auth_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Legacy/opt-in posture: RADAR_V2_AUTH_ENABLED=true restores session gating."""
+    return _make_client(monkeypatch, tmp_path, auth_enabled=True)
+
+
 def test_public_shell_and_assets(client):
     assert client.get("/health").status_code == 200
-    assert client.get("/login").status_code == 200
+    assert client.get("/login").status_code in {302, 303}  # auth disabled: /login bounces home
     asset = client.application.extensions["test_react_asset"]
     response = client.get(f"/assets/{asset}")
     assert response.status_code == 200
@@ -44,18 +57,48 @@ def test_public_shell_and_assets(client):
 
 
 @pytest.mark.parametrize("path", ["/api/tasks", "/api/preflight", "/api/runs/history", "/api/schedules"])
-def test_private_api_requires_session(client, path):
-    assert client.get(path).status_code == 401
+def test_private_api_reachable_without_session_when_auth_disabled(client, path):
+    """AUTH_ENABLED=false (default): API stays reachable with no session dependency."""
+    assert client.get(path).status_code == 200
 
 
-def test_public_session_and_calendar_without_metrics(client):
-    assert client.get("/api/session").get_json()["authenticated"] is False
-    login = client.post("/login", data={"username": "teste", "password": "teste"})
-    assert login.status_code in {302, 303}
+def test_public_session_reports_authenticated_when_auth_disabled(client):
+    payload = client.get("/api/session").get_json()
+    assert payload["authenticated"] is True
+    assert payload["auth_enabled"] is False
     payload = client.get(
         "/api/calendar/summary?start=2026-08-01&end=2026-08-31"
     ).get_json()
     assert payload["has_metrics"] is False
+
+
+def test_email_endpoints_reachable_and_empty_when_no_events_imported(client):
+    summary = client.get("/api/email/summary").get_json()
+    assert summary["ok"] is True
+    assert summary["total_imported"] == 0
+    history = client.get("/api/email/history").get_json()
+    assert history["ok"] is True
+    assert history["events"] == []
+    status = client.get("/api/email/status").get_json()
+    assert status["ok"] is True
+    assert "scheduler" in status
+
+
+@pytest.mark.parametrize("path", ["/api/tasks", "/api/preflight", "/api/runs/history", "/api/schedules"])
+def test_private_api_requires_session_when_auth_enabled(client_auth_enabled, path):
+    """Legacy behavior is preserved and testable via RADAR_V2_AUTH_ENABLED=true."""
+    assert client_auth_enabled.get(path).status_code == 401
+
+
+def test_public_session_and_login_flow_when_auth_enabled(client_auth_enabled):
+    client = client_auth_enabled
+    assert client.get("/login").status_code == 200
+    payload = client.get("/api/session").get_json()
+    assert payload["authenticated"] is False
+    assert payload["auth_enabled"] is True
+    login = client.post("/login", data={"username": "teste", "password": "teste"})
+    assert login.status_code in {302, 303}
+    assert client.get("/api/session").get_json()["authenticated"] is True
 
 
 def _login(client):

@@ -14,6 +14,7 @@ import { calendarApi, runsApi, tasksApi, type HistoryRun, type LiveRun, type Tas
 import { calendarStatusLabel, calendarStatusOrder, toCalendarStatus, type CalendarStatus } from '@/lib/radar-status'
 import { concessionariaFromTask, dateFromKey, dateKey, dateKeyFromRadar, formatDay, formatMonth, formatShortDate, monthKey, monthStart, todayLocal } from '@/lib/calendar-utils'
 import type { CalendarMetricSummary } from '@/services/legacyCompat'
+import { emailApi, type EmailEvent } from '@/services/email'
 
 type CalendarRun = HistoryRun & { concessionaria: string; statusKey: CalendarStatus }
 type StatusFilter = CalendarStatus | 'todos'
@@ -83,6 +84,8 @@ export default function Calendar() {
   const [error, setError] = useState('')
   const [invoiceError, setInvoiceError] = useState('')
   const [partialData, setPartialData] = useState(false)
+  const [emailEvents, setEmailEvents] = useState<EmailEvent[]>([])
+  const [emailLoaded, setEmailLoaded] = useState(false)
 
   const loadMonth = async (month: Date, force = false) => {
     const key = monthKey(month)
@@ -124,6 +127,7 @@ export default function Calendar() {
 
   useEffect(() => {
     void tasksApi.list().then((data) => setTasks(Object.values(data.tasks).flat())).catch(() => setTasks([]))
+    void emailApi.history().then((data) => { setEmailEvents(data.events); setEmailLoaded(true) }).catch(() => setEmailLoaded(false))
   }, [])
 
   useEffect(() => { void loadMonth(visibleMonth); void loadInvoiceMonth(visibleMonth) }, [visibleMonth])
@@ -150,6 +154,16 @@ export default function Calendar() {
   }), { downloaded: 0, errors: 0 }), [selectedInvoiceRows])
   const selectedCompletedRuns = useMemo(() => selectedRuns.filter((run) => run.statusKey === 'concluido').length, [selectedRuns])
   const selectedActiveUtilities = useMemo(() => new Set(selectedRuns.map((run) => run.concessionaria)).size, [selectedRuns])
+  const selectedEmailDownloaded = useMemo(() => emailEvents.filter((event) => {
+    if (event.category !== 'SUCCESS' || !event.captured_at) return false
+    const eventDate = new Date(event.captured_at)
+    return !Number.isNaN(eventDate.getTime()) && dateKey(eventDate) === dateKey(selectedDay)
+  }).length, [emailEvents, selectedDay])
+  const selectedEmailDuplicates = useMemo(() => emailEvents.filter((event) => {
+    if (event.category !== 'DUPLICATE' || !event.captured_at) return false
+    const eventDate = new Date(event.captured_at)
+    return !Number.isNaN(eventDate.getTime()) && dateKey(eventDate) === dateKey(selectedDay)
+  }).length, [emailEvents, selectedDay])
 
   const gridDays = useMemo(() => eachDayOfInterval({
     start: startOfWeek(visibleMonth, { weekStartsOn: 0 }),
@@ -228,12 +242,15 @@ export default function Calendar() {
                   {(counts.aguardando + counts.parando + counts.outros) > 0 && <div className="text-muted-foreground">{counts.aguardando + counts.parando + counts.outros} outros</div>}
                 </div>}
                 {view === 'faturas' && invoiceDay && <div className="mt-2 space-y-0.5 text-[11px]"><div className="text-emerald-600">B {invoiceDay.downloaded}</div><div className="text-destructive">E {invoiceDay.errors}</div></div>}
+                {view === 'faturas' && emailLoaded && emailEvents.some((event) => event.category === 'SUCCESS' && event.captured_at && dateKey(new Date(event.captured_at)) === dateKey(day)) && <div className="text-[11px] text-blue-600">Email</div>}
                 {view === 'faturas' && !invoiceDay && runs.length > 0 && <div className="mt-2 text-[11px] text-muted-foreground">Sem detalhe</div>}
               </button>
             })}
           </div>
         </CardContent>
       </Card>
+
+      {view === 'faturas' && <Card><CardHeader><CardTitle>Origem das faturas de {formatDay(selectedDay)}</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">Portal</p><p className="mt-1 text-2xl font-bold">{hasInvoiceMetricsForFilter ? selectedInvoiceTotals.downloaded : 'Sem dados'}</p></div><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">E-mail</p><p className="mt-1 text-2xl font-bold text-blue-600">{emailLoaded ? selectedEmailDownloaded : 'Carregando'}</p><p className="mt-1 text-xs text-muted-foreground">{emailLoaded ? `${selectedEmailDuplicates} duplicadas nao contam como novas` : ''}</p></div><div className="rounded-lg border p-4"><p className="text-xs text-muted-foreground">Total</p><p className="mt-1 text-2xl font-bold">{hasInvoiceMetricsForFilter && emailLoaded ? selectedInvoiceTotals.downloaded + selectedEmailDownloaded : emailLoaded ? selectedEmailDownloaded : 'Carregando'}</p><p className="mt-1 text-xs text-muted-foreground">{hasInvoiceMetricsForFilter ? 'Portal + E-mail' : 'Portal sem metrica detalhada'}</p></div></div></CardContent></Card>}
 
       {view === 'faturas' && !hasInvoiceMetricsForFilter ? <InvoiceMetricsUnavailable selectedDay={selectedDay} error={invoiceError} completedRuns={selectedCompletedRuns} activeUtilities={selectedActiveUtilities} /> : view === 'faturas' ? <>
       <div><h3 className="mb-3 text-lg font-semibold">Faturas de {formatDay(selectedDay)}</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

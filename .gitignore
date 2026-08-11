@@ -68,6 +68,12 @@ pocketbase/
 # Python
 __pycache__/
 *.py[cod]
+.venv/
+.venv_broken_backup/
+
+# Local DB/backup snapshots and timestamped config backups (operational, not source)
+/backups/
+*.bak_[0-9]*
 
 # Browser profiles, downloaded artifacts and operational state are never source.
 core/downloaders/**/chrome_profiles/

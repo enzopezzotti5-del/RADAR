@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Activity, CalendarDays, CalendarClock, DownloadCloud, LayoutDashboard, LogOut, Settings } from 'lucide-react'
+import { Activity, CalendarDays, CalendarClock, DownloadCloud, LayoutDashboard, LogOut, Mail, Settings } from 'lucide-react'
 
 import logoUrl from '@/assets/chatgpt-image-24-de-jul.de-2026-104525-83e13.png'
 import { useAuth } from '@/hooks/use-auth'
@@ -20,13 +20,14 @@ const items = [
   { title: 'Catalogo', url: '/downloaders', icon: DownloadCloud },
   { title: 'Agendamentos', url: '/schedules', icon: CalendarClock },
   { title: 'Calendario', url: '/calendario', icon: CalendarDays },
+  { title: 'Faturas por E-mail', url: '/emails', icon: Mail },
   { title: 'Execucoes', url: '/executions', icon: Activity },
   { title: 'Configuracoes', url: '/settings', icon: Settings },
 ]
 
 export function AppSidebar() {
   const location = useLocation()
-  const { signOut } = useAuth()
+  const { signOut, authEnabled } = useAuth()
 
   return (
     <Sidebar variant="inset" className="border-r border-border">
@@ -53,18 +54,20 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => {
-              void signOut()
-            }}>
-              <LogOut />
-              <span>Sair</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+      {authEnabled && (
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => {
+                void signOut()
+              }}>
+                <LogOut />
+                <span>Sair</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      )}
     </Sidebar>
   )
 }

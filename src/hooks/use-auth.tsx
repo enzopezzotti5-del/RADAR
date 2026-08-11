@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { isLegacyCompatEnabled } from '@/services/api'
-import { radarLogin, radarSessionIsAuthenticated } from '@/services/legacyCompat'
+import { radarLogin, radarSessionStatus } from '@/services/legacyCompat'
 
 interface AuthContextType {
   user: any
   isAuthenticated: boolean
+  authEnabled: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
   loading: boolean
@@ -21,18 +22,23 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<any>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authEnabled, setAuthEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (isLegacyCompatEnabled) {
-      radarSessionIsAuthenticated()
-        .then((authenticated) => {
+      radarSessionStatus()
+        .then(({ authenticated, authEnabled: enabled }) => {
           setUser(authenticated ? { username: 'Radar' } : null)
           setIsAuthenticated(authenticated)
+          setAuthEnabled(enabled)
         })
         .catch(() => {
+          // Server unreachable: default to open access rather than trapping
+          // the user on a login screen the backend has disabled.
           setUser(null)
-          setIsAuthenticated(false)
+          setIsAuthenticated(true)
+          setAuthEnabled(false)
         })
         .finally(() => setLoading(false))
       return
@@ -76,7 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, signIn, signOut, loading }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, authEnabled, signIn, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   )

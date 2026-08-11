@@ -25,6 +25,7 @@ import {
 } from '@/lib/api'
 import { formatDuration } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
+import { EmailInvoiceSummary } from '@/components/EmailInvoiceSummary'
 
 export default function Dashboard() {
   const [data, setData] =
@@ -194,6 +195,8 @@ export default function Dashboard() {
           ),
         )}
       </div>
+
+      <EmailInvoiceSummary />
 
       {data.by_concessionaria &&
         data.by_concessionaria.length > 0 && (

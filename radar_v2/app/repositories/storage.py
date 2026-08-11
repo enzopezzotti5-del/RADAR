@@ -213,10 +213,159 @@ def ensure_db() -> None:
         """)
         _ensure_metric_schema(conn)
         _ensure_download_receipt_schema(conn)
+        _ensure_email_sync_schema(conn)
         conn.commit()
 
 
+def _ensure_email_sync_schema(conn: sqlite3.Connection) -> None:
+    """Read-only email-manifest importer state: a watermark and an audit trail.
+
+    This never touches energia-automacao's manifest.jsonl; it only remembers
+    how far RADAR has read into it and what it did with each event, so the
+    scheduled sync job is idempotent and safe to re-run or run concurrently.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_sync_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_capture_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            manifest_key TEXT,
+            manifest_line_no INTEGER NOT NULL,
+            imap_uid TEXT,
+            message_id TEXT,
+            captured_at TEXT,
+            provider TEXT,
+            uc TEXT,
+            subject TEXT,
+            original_filename TEXT,
+            normalized_name TEXT,
+            sha256 TEXT,
+            document_type TEXT,
+            category TEXT NOT NULL,
+            pending_reason TEXT,
+            run_id INTEGER REFERENCES runs(id) ON DELETE SET NULL,
+            imported_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_events_category ON email_capture_events(category)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_email_events_captured_at ON email_capture_events(captured_at)")
+
+
+def email_sync_get_watermark() -> int:
+    """Number of manifest.jsonl lines already processed (0 = nothing imported yet)."""
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute("SELECT value FROM email_sync_state WHERE key='last_line_no'").fetchone()
+    return int(row[0]) if row else 0
+
+
+def email_sync_set_watermark(line_no: int) -> None:
+    ensure_db()
+    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT INTO email_sync_state (key, value, updated_at) VALUES ('last_line_no', ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+        """, (str(line_no), now))
+        conn.commit()
+
+
+def email_event_exists(idempotency_key: str) -> bool:
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM email_capture_events WHERE idempotency_key=?", (idempotency_key,)
+        ).fetchone()
+    return row is not None
+
+
+def record_email_event(*, idempotency_key: str, manifest_key: str | None, manifest_line_no: int,
+                        imap_uid: str | None, message_id: str | None, captured_at: str | None,
+                        provider: str | None, uc: str | None, subject: str | None,
+                        original_filename: str | None, normalized_name: str | None,
+                        sha256: str | None, document_type: str | None, category: str,
+                        pending_reason: str | None, run_id: int | None) -> None:
+    """Idempotent insert: a UNIQUE(idempotency_key) makes re-imports a no-op."""
+    ensure_db()
+    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT OR IGNORE INTO email_capture_events
+            (idempotency_key, manifest_key, manifest_line_no, imap_uid, message_id, captured_at,
+             provider, uc, subject, original_filename, normalized_name, sha256, document_type,
+             category, pending_reason, run_id, imported_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (idempotency_key, manifest_key, manifest_line_no, imap_uid, message_id, captured_at,
+              provider, uc, subject, original_filename, normalized_name, sha256, document_type,
+              category, pending_reason, run_id, now))
+        conn.commit()
+
+
+def email_sync_summary() -> dict:
+    """Aggregate counts by category for the /api/email/summary endpoint."""
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT category, COUNT(*) FROM email_capture_events GROUP BY category"
+        ).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM email_capture_events").fetchone()[0]
+    return {"by_category": {cat: int(n) for cat, n in rows}, "total_imported": int(total)}
+
+
+def email_event_history(limit: int = 200, category: str | None = None) -> list[dict]:
+    ensure_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        if category:
+            rows = conn.execute("""
+                SELECT captured_at, provider, uc, subject, original_filename, category,
+                       document_type, pending_reason, imap_uid, sha256, run_id
+                FROM email_capture_events WHERE category=?
+                ORDER BY captured_at DESC, id DESC LIMIT ?
+            """, (category, limit)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT captured_at, provider, uc, subject, original_filename, category,
+                       document_type, pending_reason, imap_uid, sha256, run_id
+                FROM email_capture_events
+                ORDER BY captured_at DESC, id DESC LIMIT ?
+            """, (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── runs ──────────────────────────────────────────────────────────────────────
+
+def find_or_create_email_day_run(*, date_str: str, provider: str) -> int:
+    """One synthetic 'runs' row per (calendar day, provider) email bucket.
+
+    Reused across sync passes so re-running the importer never creates
+    duplicate runs; individual events are then upserted onto it via
+    upsert_run_metric_item, which is itself idempotent per item_key.
+    """
+    ensure_db()
+    task_id = f"email_import_{provider.lower()}"
+    task_name = f"E-mail - {provider}"
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT id FROM runs WHERE task_id=? AND date(started_at)=? LIMIT 1",
+            (task_id, date_str),
+        ).fetchone()
+        if row:
+            return int(row[0])
+        cur = conn.execute(
+            """INSERT INTO runs (started_at, finished_at, task_id, task_name, category, command, status)
+               VALUES (?, ?, ?, ?, 'EMAIL', 'email_manifest_import', 'success')""",
+            (f"{date_str} 00:00:00", f"{date_str} 00:00:00", task_id, task_name),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+
 
 def create_run(started_at: str, task_id: str, task_name: str, category: str, command: str) -> int:
     ensure_db()

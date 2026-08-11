@@ -12,6 +12,7 @@ import ExecutionDetail from './pages/ExecutionDetail'
 import Schedules from './pages/Schedules'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
+import EmailInvoices from './pages/EmailInvoices'
 import { AuthProvider } from './hooks/use-auth'
 import { ThemeProvider } from './hooks/use-theme'
 
@@ -31,6 +32,7 @@ const App = () => (
               <Route path="/schedules" element={<Schedules />} />
               <Route path="/executions" element={<Executions />} />
               <Route path="/calendario" element={<Calendar />} />
+              <Route path="/emails" element={<EmailInvoices />} />
               <Route path="/executions/:id" element={<ExecutionDetail />} />
               <Route path="/history" element={<Navigate to="/executions" replace />} />
               <Route path="/settings" element={<Settings />} />
