@@ -103,6 +103,10 @@ def autonomous_exit_code(downloaded: int, errors: int) -> int:
         return 1
     return 0 if downloaded else 3
 
+
+def _competencia_atual() -> str:
+    return datetime.now().strftime("%m-%Y")
+
 # Tempos (segundos)
 T_LOGIN    = 60
 T_EL       = 15
@@ -1301,6 +1305,15 @@ def main() -> int:
         ok_total = 0
         skip_total = 0
         erro_total = 0
+        falhas: list[str] = []
+
+        def registrar_erro(instalacao: str, motivo: str, mes_ref: str = "") -> None:
+            """Mantém a métrica do painel alinhada ao erro operacional do lote."""
+            nonlocal erro_total
+            competencia = mes_ref or _competencia_atual()
+            erro_total += 1
+            falhas.append(f"{instalacao} | {competencia} | {motivo}")
+            _emit("item_error", instalacao=instalacao, mes_ref=competencia, carimbo=f"erro:{motivo}")
 
         for idx, inst in enumerate(instalacoes, 1):
             log(f"[{idx}/{len(instalacoes)}] Instalação: {inst.instalacao}", "INFO")
@@ -1323,12 +1336,12 @@ def main() -> int:
 
             # â"€â"€ Seleciona a UC â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if not selecionar_uc(driver, inst.instalacao):
-                erro_total += 1
+                registrar_erro(inst.instalacao, "selecionar_uc")
                 continue
 
             # â"€â"€ Acessa HistÃ³rico de Pagamento â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if not acessar_historico(driver):
-                erro_total += 1
+                registrar_erro(inst.instalacao, "acessar_historico")
                 continue
 
             # â"€â"€ LÃª faturas â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -1363,7 +1376,7 @@ def main() -> int:
                 time.sleep(0.5)   # delay antes de cada download
                 pdf_temp = baixar_fatura(driver, fatura, temp_dir, handle_principal)
                 if pdf_temp is None:
-                    erro_total += 1
+                    registrar_erro(inst.instalacao, "baixar_fatura", fatura.mes_ref)
                     continue
 
                 # Consome carimbo antes de mover para usar no nome do arquivo
@@ -1383,7 +1396,7 @@ def main() -> int:
                     log(f"PDF movido → {destino}", "FAT")
                 except Exception as e:
                     log(f"Erro ao mover PDF: {e}", "ERR")
-                    erro_total += 1
+                    registrar_erro(inst.instalacao, "mover_pdf", fatura.mes_ref)
                     continue
 
                 # Grava nos Ã­ndices (carimbo jÃ¡ consumido)
@@ -1397,6 +1410,8 @@ def main() -> int:
         # â"€â"€ Resumo final â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
         log("=" * 60)
         log(f"Concluído — baixados: {ok_total} | pulados: {skip_total} | erros: {erro_total}", "OK")
+        for falha in falhas:
+            log(f"Falha para retry seletivo: {falha}", "ERR")
         log("=" * 60)
         return autonomous_exit_code(ok_total, erro_total)
 
