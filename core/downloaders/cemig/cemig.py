@@ -725,21 +725,38 @@ def _resolver_captcha_2captcha() -> Optional[str]:
         return None
 
 
-def _injetar_captcha(driver, token: str) -> None:
+def _injetar_captcha(driver, token: str) -> bool:
     """Injeta o token do captcha no campo oculto e dispara o callback."""
-    driver.execute_script(f"""
-        document.getElementById('g-recaptcha-response').innerHTML = '{token}';
-        try {{
+    return bool(driver.execute_script("""
+        const token = arguments[0];
+        const response = document.getElementById('g-recaptcha-response');
+        if (!response) return false;
+        response.value = token;
+        response.innerHTML = token;
+        response.dispatchEvent(new Event('input', { bubbles: true }));
+        response.dispatchEvent(new Event('change', { bubbles: true }));
+        try {
             var cb = document.querySelector('[data-callback]');
-            if (cb) {{
+            if (cb) {
                 var fn = cb.getAttribute('data-callback');
-                if (fn && window[fn]) window[fn]('{token}');
-            }}
-        }} catch(e) {{}}
-        try {{
-            if (window.grecaptcha && window.grecaptcha.getResponse) {{}}
-        }} catch(e) {{}}
-    """)
+                if (fn && window[fn]) window[fn](token);
+            }
+        } catch(e) {}
+        return response.value === token;
+    """, token))
+
+
+def _diagnostico_login(driver) -> str:
+    """Resume mensagens relevantes que o portal exibiu após a submissão."""
+    try:
+        texto = driver.execute_script("return (document.body && document.body.innerText || '').slice(0, 2000);")
+        linhas = [linha.strip() for linha in texto.splitlines() if linha.strip()]
+        suspeitas = [linha for linha in linhas if any(p in linha.lower() for p in (
+            "erro", "inválid", "inval", "captcha", "recaptcha", "bloque", "senha", "acesso",
+        ))]
+        return " | ".join(suspeitas[:5]) or "sem mensagem visível do portal"
+    except Exception as exc:
+        return f"diagnóstico indisponível: {exc}"
 
 
 def _credenciais_preservadas(campo_usuario, campo_senha, usuario: str, senha: str) -> bool:
@@ -774,92 +791,100 @@ def _resultado_login(driver) -> str | None:
     return None
 
 
-def _diagnosticar_login_nao_confirmado(driver, codigo: str) -> None:
-    log(f"{codigo}: url={driver.current_url} formulario_presente={bool(driver.find_elements(By.CSS_SELECTOR, 'form'))}", "ERR")
-    try:
-        salvar_debug(driver, codigo.lower())
-    except Exception:
-        pass
-
-
 def fazer_login(driver, usuario: str, senha: str) -> bool:
+    def preencher_credenciais() -> bool:
+        try:
+            campo = W(driver, By.CSS_SELECTOR,
+                      "#userId, input[name='userId'], #Acesso, input[name='Acesso']")
+            campo.clear()
+            campo.send_keys(usuario)
+            campo_s = W(driver, By.CSS_SELECTOR, LOGIN_PASSWORD_SELECTOR, 10)
+            campo_s.clear()
+            campo_s.send_keys(senha)
+            return True
+        except TimeoutException:
+            salvar_debug(driver, "cemig_formulario_indisponivel")
+            log("CEMIG_FORMULARIO_INDISPONIVEL", "ERR")
+            return False
+
     log("Abrindo portal CEMIG...")
     driver.get(f"{BASE_URL}/Login/Index")
     time.sleep(1.5)
-
-    aceitar_cookies_cemig(driver)   # <-- ADICIONE ESTA LINHA AQUI
+    aceitar_cookies_cemig(driver)
     time.sleep(0.8)
-
-    # Preenche usuário
-    try:
-        campo = W(driver, By.CSS_SELECTOR,
-                  "#userId, input[name='userId'], #Acesso, input[name='Acesso']")
-        campo.clear()
-        campo.send_keys(usuario)
-    except TimeoutException:
-        salvar_debug(driver, "erro_campo_usuario")
-        log("Campo de usuário não encontrado", "ERR")
+    if not preencher_credenciais():
         return False
 
-    # Preenche senha
-    try:
-        campo_s = W(driver, By.CSS_SELECTOR, LOGIN_PASSWORD_SELECTOR, 10)
-        campo_s.clear()
-        campo_s.send_keys(senha)
-    except TimeoutException:
-        salvar_debug(driver, "erro_campo_senha")
-        log("Campo de senha não encontrado", "ERR")
-        return False
+    for tentativa in (1, 2):
+        token = _resolver_captcha_2captcha()
+        if not token:
+            log("2captcha falhou — não foi possível submeter o login.", "WARN")
+            break
+        if not _injetar_captcha(driver, token):
+            log(f"CEMIG_CAPTCHA_NAO_INJETADO: tentativa={tentativa}/2", "ERR")
+            continue
 
-    # Resolve reCAPTCHA automaticamente via 2captcha
-    token = _resolver_captcha_2captcha()
-    if token:
-        _injetar_captcha(driver, token)
-        time.sleep(0.5)
         try:
             campo = W(driver, By.CSS_SELECTOR,
                       "#userId, input[name='userId'], #Acesso, input[name='Acesso']")
             campo_s = W(driver, By.CSS_SELECTOR, LOGIN_PASSWORD_SELECTOR, 10)
         except (TimeoutException, StaleElementReferenceException):
-            _diagnosticar_login_nao_confirmado(driver, "CEMIG_LOGIN_NAO_CONFIRMADO")
-            return False
-        if not _credenciais_preservadas(campo, campo_s, usuario, senha):
-            _diagnosticar_login_nao_confirmado(driver, "CEMIG_LOGIN_NAO_CONFIRMADO")
-            log("Formulário foi recarregado/rerenderizado antes do submit; login não acionado.", "ERR")
-            return False
-        # Clica em Entrar automaticamente
+            campo = campo_s = None
+        if campo is not None and not _credenciais_preservadas(campo, campo_s, usuario, senha):
+            log(f"CEMIG_CREDENCIAIS_PERDIDAS: tentativa={tentativa}/2 — formulário rerenderizou antes do submit", "ERR")
+            if not preencher_credenciais():
+                break
+            continue
+
+        clicou = False
         for by, sel in [
             (By.CSS_SELECTOR, "button[type='submit']"),
-            (By.XPATH,        "//button[contains(normalize-space(.), 'Entrar')]"),
-            (By.XPATH,        "//input[@type='submit']"),
+            (By.XPATH, "//button[contains(normalize-space(.), 'Entrar')]"),
+            (By.XPATH, "//input[@type='submit']"),
         ]:
             try:
                 btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((by, sel)))
-                clicar(driver, btn, "btn_entrar")
-                log("Botão Entrar acionado — aguardando confirmação do portal.", "DBG")
+                clicou = clicar(driver, btn, "btn_entrar")
+                if clicou:
+                    log(f"Botão Entrar acionado (tentativa {tentativa}/2)", "DBG")
                 break
             except Exception:
                 continue
-    else:
-        log("─" * 60)
-        log("2captcha falhou — resolva o CAPTCHA manualmente e clique Entrar.", "WARN")
-        log("─" * 60)
+        if not clicou:
+            log(f"CEMIG_BOTAO_ENTRAR_NAO_ENCONTRADO: tentativa={tentativa}/2", "ERR")
+            continue
 
-    limite = time.monotonic() + T_LOGIN
-    resultado = None
-    while time.monotonic() < limite:
-        resultado = _resultado_login(driver)
-        if resultado:
-            break
-        time.sleep(0.25)
-    if resultado != "LOGIN_OK":
+        limite = time.monotonic() + T_LOGIN // 2
+        resultado = None
+        while time.monotonic() < limite:
+            if driver.find_elements(By.ID, "ddCliente"):
+                resultado = "LOGIN_OK"
+                break
+            resultado = _resultado_login(driver)
+            if resultado:
+                break
+            time.sleep(0.25)
+
+        if resultado == "LOGIN_OK":
+            spinner(driver)
+            log(f"Login OK — {driver.current_url}", "OK")
+            return True
+
+        detalhe = _diagnostico_login(driver)
         codigo = resultado or "CEMIG_LOGIN_NAO_CONFIRMADO"
-        _diagnosticar_login_nao_confirmado(driver, codigo)
-        return False
-
-    spinner(driver)
-    log(f"Login OK — {driver.current_url}", "OK")
-    return True
+        salvar_debug(driver, f"cemig_login_nao_confirmado_tentativa_{tentativa}")
+        log(
+            f"{codigo}: tentativa={tentativa}/2 "
+            f"url={driver.current_url} formulario_presente="
+            f"{bool(driver.find_elements(By.CSS_SELECTOR, 'form'))} detalhe={detalhe}",
+            "ERR",
+        )
+        if tentativa == 1:
+            driver.refresh()
+            time.sleep(2)
+            if not preencher_credenciais():
+                break
+    return False
 
 
 # =============================================================================
