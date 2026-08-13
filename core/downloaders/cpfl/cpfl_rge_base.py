@@ -45,7 +45,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from core.downloaders.cpfl.cpfl_guard import validar_expansao_ucs
+from core.downloaders.cpfl.cpfl_guard import ExpansaoUcsError, validar_expansao_ucs
 from core.downloaders.cpfl.cpfl_inventory import (
     append_pdf_sha,
     ensure_canonical_inventory,
@@ -2588,6 +2588,7 @@ def executar(
     candidates = 0
     completed = 0
     technical_errors = 0
+    blocked_holders = 0
     pdfs_downloaded = 0
     pdfs_already_existed = 0
     try:
@@ -2684,12 +2685,6 @@ def executar(
             log.info("[%s/%s] Titular %s | UCs: %s (%s ativas, %s inativas)",
                      idx_t, len(titulares), titular_preview.get("text", ""),
                      len(ucs_preview), len(ativas_preview), len(ucs_preview) - len(ativas_preview))
-            validar_expansao_ucs(
-                titular_id=titular_alvo.get("id", ""),
-                titular_texto=titular_preview.get("text", ""),
-                total_ucs=len(ucs_preview),
-                max_ucs=max_ucs_por_titular,
-            )
             if canonical_ucs is None:
                 _registrar_inventario(
                     titular_id=titular_alvo.get("id", ""),
@@ -2733,6 +2728,19 @@ def executar(
                     pdfs_already_existed += puladas
                     log.info("Pre-filtro: %s/%s UCs ja no master — puladas sem navegar. Restam: %s",
                              puladas, ucs_antes, len(ucs_para_rodar))
+
+            try:
+                validar_expansao_ucs(
+                    titular_id=titular_alvo.get("id", ""),
+                    titular_texto=titular_preview.get("text", ""),
+                    total_ucs=len(ucs_para_rodar),
+                    max_ucs=max_ucs_por_titular,
+                )
+            except ExpansaoUcsError as exc:
+                blocked_holders += 1
+                technical_errors += 1
+                log.error("Titular bloqueado por volume; seguindo para o próximo: %s", exc)
+                continue
 
             for idx_local, uc_item in enumerate(ucs_para_rodar, start=1):
                 candidates += 1
@@ -2795,16 +2803,17 @@ def executar(
             "PDFS_DOWNLOADED": pdfs_downloaded,
             "PDFS_ALREADY_EXISTED": pdfs_already_existed,
             "PDF_DUPLICATES_BY_SHA": _PDF_DUPLICATES_BY_SHA,
+            "HOLDERS_BLOCKED_BY_VOLUME": blocked_holders,
         }
         log.info("CPFL_RUN_METRICS %s", json.dumps(run_metrics, sort_keys=True))
         return autonomous_batch_exit_code(
             candidates=candidates, completed=completed, technical_errors=technical_errors,
         )
     except Exception as exc:
-        log.error("Falha no login CPFL/RGE: %s", exc)
+        log.error("Falha na execução CPFL/RGE: %s", exc)
         if driver is not None:
             try:
-                artefatos_erro = _snapshot_debug(driver, "cpfl_rge_erro_login")
+                artefatos_erro = _snapshot_debug(driver, "cpfl_rge_erro_execucao")
                 log.error("HTML de erro salvo em: %s", artefatos_erro["html"])
                 log.error("Screenshot de erro salvo em: %s", artefatos_erro["screenshot"])
                 if "txt" in artefatos_erro:
