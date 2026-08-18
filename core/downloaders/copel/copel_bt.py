@@ -72,6 +72,20 @@ except Exception:
     def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
         pass
 
+try:
+    from radar_v2.app.services.orbit_handoff import request_orbit_handoff as _request_orbit_handoff
+    def _request_handoff(path, *, run_id=None) -> None:
+        # Contrato canônico Radar->Orbit (mesma função usada pelo ENEL SP):
+        # fail-open — nunca deve interromper o loop de download por causa de
+        # uma falha no handoff.
+        try:
+            _request_orbit_handoff(path, task_id="dl_copel_bt", utility="COPEL", run_id=run_id)
+        except Exception as exc:
+            log(f"Handoff Radar->Orbit indisponível: {exc}", "WARN")
+except Exception:
+    def _request_handoff(path, *, run_id=None) -> None:  # type: ignore[misc]
+        pass
+
 
 # =============================================================================
 # CONFIGURAÇÃO
@@ -758,35 +772,62 @@ def selecionar_uc(driver: webdriver.Chrome, instalacao: str) -> bool:
         time.sleep(1.0)
         log(f"Filtro UC antiga: {fid} | digitado: {inst_digitada}", "DBG")
 
-        corpo = driver.find_element(By.ID, CORPO_ID)
-        linhas = corpo.find_elements(By.XPATH, ".//tr[@data-ri]")
+        # Entre a leitura da tabela e o clique, o PrimeFaces pode disparar um
+        # novo re-render AJAX (ex.: um segundo evento de keyup/change do
+        # próprio filtro, ou uma resposta atrasada do sleep acima), tornando
+        # `corpo`/`linhas`/`link_alvo` referências obsoletas (stale) e
+        # lançando StaleElementReferenceException no clique. Cada tentativa
+        # re-busca tudo do zero — nunca reaproveita elementos de uma
+        # tentativa anterior.
+        MAX_TENTATIVAS_SELECAO = 3
+        clicou = False
+        for tentativa in range(1, MAX_TENTATIVAS_SELECAO + 1):
+            try:
+                WebDriverWait(driver, T_EL).until(
+                    EC.presence_of_element_located((By.ID, CORPO_ID))
+                )
+                corpo = driver.find_element(By.ID, CORPO_ID)
+                linhas = corpo.find_elements(By.XPATH, ".//tr[@data-ri]")
 
-        # Célula exibe com zeros ("0073844390"); compara normalizado sem zeros
-        link_alvo = None
-        for linha in linhas:
-            tds = linha.find_elements(By.TAG_NAME, "td")
-            if not tds:
-                continue
-            if any(td.text.strip().lstrip("0") == inst_digitada for td in tds):
-                links = linha.find_elements(By.CSS_SELECTOR, "a[aria-label='Selecionar']")
-                if links:
-                    link_alvo = links[0]
+                # Célula exibe com zeros ("0073844390"); compara normalizado sem zeros
+                link_alvo = None
+                for linha in linhas:
+                    tds = linha.find_elements(By.TAG_NAME, "td")
+                    if not tds:
+                        continue
+                    if any(td.text.strip().lstrip("0") == inst_digitada for td in tds):
+                        links = linha.find_elements(By.CSS_SELECTOR, "a[aria-label='Selecionar']")
+                        if links:
+                            link_alvo = links[0]
+                        break
+
+                if link_alvo is None:
+                    log(f"UC {instalacao}: não encontrada ou sem botão Selecionar (PT/DS)", "WARN")
+                    return False
+
+                # Dispara onclick via JS — PrimeFaces.ab não responde ao .click() normal.
+                # onclick é relido a cada tentativa: o id interno j_idtXX do
+                # PrimeFaces.ab(...) pode mudar após um re-render.
+                onclick = link_alvo.get_attribute("onclick") or ""
+                if "PrimeFaces.ab" in onclick:
+                    # Remove o "return false;" e executa o PrimeFaces.ab(...)
+                    js_call = onclick.replace("return false;", "").strip().rstrip(";")
+                    driver.execute_script(js_call)
+                    log(f"Clique PrimeFaces disparado para UC {instalacao}", "DBG")
+                else:
+                    # Fallback para clique direto
+                    driver.execute_script("arguments[0].click();", link_alvo)
+                clicou = True
                 break
+            except StaleElementReferenceException:
+                log(f"UC {instalacao}: elemento obsoleto (re-render AJAX), tentativa {tentativa}/{MAX_TENTATIVAS_SELECAO}", "WARN")
+                _aguardar_spinner(driver, 5)
+                time.sleep(0.3)
+                continue
 
-        if link_alvo is None:
-            log(f"UC {instalacao}: não encontrada ou sem botão Selecionar (PT/DS)", "WARN")
+        if not clicou:
+            log(f"UC {instalacao}: falha ao selecionar após {MAX_TENTATIVAS_SELECAO} tentativas (elemento sempre obsoleto)", "ERR")
             return False
-
-        # Dispara onclick via JS — PrimeFaces.ab não responde ao .click() normal
-        onclick = link_alvo.get_attribute("onclick") or ""
-        if "PrimeFaces.ab" in onclick:
-            # Remove o "return false;" e executa o PrimeFaces.ab(...)
-            js_call = onclick.replace("return false;", "").strip().rstrip(";")
-            driver.execute_script(js_call)
-            log(f"Clique PrimeFaces disparado para UC {instalacao}", "DBG")
-        else:
-            # Fallback para clique direto
-            driver.execute_script("arguments[0].click();", link_alvo)
 
         # Aguarda navegaÃ§Ã£o: tabela de seleÃ§Ã£o some do DOM
         WebDriverWait(driver, T_EL).until_not(
@@ -1405,6 +1446,12 @@ def main() -> int:
                                 inst.cnpj, str(destino),
                                 carimbo_pre=carimbo)
                 _emit("downloaded", instalacao=inst.instalacao, mes_ref=fatura.mes_ref, carimbo=carimbo)
+                # Contrato canônico Radar->Orbit: alimenta só a entrada do
+                # pipeline (Faturas_V2 via outbox/drain). Quem decide mover
+                # para Digitadas/ continua sendo exclusivamente
+                # copel_filtro.py + salvar_confirmado — nada aqui escreve
+                # nesse destino nem no checkpoint.
+                _request_handoff(destino)
                 ok_total += 1
 
         # â"€â"€ Resumo final â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
