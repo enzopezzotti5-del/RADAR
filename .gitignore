@@ -86,6 +86,9 @@ core/downloaders/**/temp*/
 # scripts are runtime support files and remain outside the source index.
 /scripts/*
 !/scripts/start_radar.ps1
+!/scripts/infra/
+/scripts/infra/*
+!/scripts/infra/radar_orbit_daily_publisher.py
 
 # Runtime evidence retained locally, never committed with the application code.
 /core/**

@@ -42,4 +42,4 @@ def test_invalid_and_unsupported_are_fail_open(monkeypatch, tmp_path):
     monkeypatch.setenv("RADAR_ORBIT_HANDOFF_ROOT", str(tmp_path / "handoff"))
     assert request_orbit_handoff(bad, task_id="dl_enel_sp", utility="ENEL")["ok"] is False
     valid = _pdf(tmp_path / "valid.pdf")
-    assert request_orbit_handoff(valid, task_id="dl_cemig", utility="CEMIG")["ok"] is False
+    assert request_orbit_handoff(valid, task_id="dl_utility_inexistente", utility="UTILITY_INEXISTENTE")["ok"] is False

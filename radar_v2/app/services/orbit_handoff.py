@@ -26,6 +26,7 @@ TASK_UTILITY = {
     "dl_celesc_bt": "CELESC",
     "dl_light_rj": "LIGHT",
     "dl_cpfl_bt": "CPFL",
+    "dl_cemig": "CEMIG",
 }
 _TEMP_SUFFIXES = (".part", ".tmp", ".crdownload")
 
