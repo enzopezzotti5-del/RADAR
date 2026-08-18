@@ -4,7 +4,14 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 
-from ..repositories.storage import list_runs, list_schedules
+from ..repositories.storage import get_run_metric_counts, list_runs, list_schedules
+
+# Runs bem-sucedidos consecutivos (do mais recente para tras) com
+# downloaded_count=0 antes de deixar de reportar HEALTHY. Um downloader pode
+# rodar com exit_code=0 (login ok, nenhum erro) e ainda assim nao produzir
+# nenhuma fatura nova por dias seguidos (ex.: bug de leitura/filtro) — isso
+# nao e "saudavel", e um estado degradado silencioso.
+ZERO_DOWNLOAD_DEGRADED_THRESHOLD = 3
 
 
 @dataclass(frozen=True)
@@ -60,12 +67,33 @@ class DownloaderHealthService:
             enabled = any(bool(s.get("enabled")) for s in task_schedules)
             next_runs = sorted(s["next_run_at"] for s in task_schedules if s.get("enabled") and s.get("next_run_at"))
             autonomous_ready = preflight.ready and bool(task_schedules)
+
+            consecutive_zero_downloads = 0
+            for run in runs:
+                if run.get("status") != "success":
+                    break
+                metrics = get_run_metric_counts(run["id"])
+                if metrics is None or metrics["downloaded"] > 0:
+                    break
+                consecutive_zero_downloads += 1
+            last_valid_download = next(
+                (
+                    run.get("finished_at")
+                    for run in runs
+                    if run.get("status") == "success"
+                    and (get_run_metric_counts(run["id"]) or {}).get("downloaded", 0) > 0
+                ),
+                None,
+            )
+
             if not preflight.ready:
                 health = "BLOCKED_EXTERNAL" if preflight.status == "BLOCKED_EXTERNAL" else "FAILED"
             elif failures:
                 health = "DEGRADED"
             elif last and last.get("status") == "skipped":
                 health = "NO_INPUT"
+            elif last_success and consecutive_zero_downloads >= ZERO_DOWNLOAD_DEGRADED_THRESHOLD:
+                health = "DEGRADED_NO_NEW_INVOICES"
             elif last_success:
                 health = "HEALTHY"
             elif autonomous_ready:
@@ -79,7 +107,9 @@ class DownloaderHealthService:
                 "last_run": last.get("started_at") if last else None,
                 "last_status": last.get("status") if last else None,
                 "last_success": last_success.get("finished_at") if last_success else None,
-                "last_valid_download": None, "consecutive_failures": failures,
+                "last_valid_download": last_valid_download,
+                "consecutive_zero_downloads": consecutive_zero_downloads,
+                "consecutive_failures": failures,
                 "next_run": next_runs[0] if next_runs else None,
                 "block_reason": "; ".join(i.requirement for i in preflight.issues) or None,
                 "autonomous_ready": autonomous_ready,
