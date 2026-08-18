@@ -85,6 +85,20 @@ except Exception:
         pass
 
 try:
+    from radar_v2.app.services.orbit_handoff import request_orbit_handoff as _request_orbit_handoff
+    def _request_handoff(path, *, run_id=None) -> None:
+        # Contrato canônico Radar->Orbit (mesma função usada pelo ENEL SP).
+        # Sem publisher exclusivo para CEMIG — mesma chamada, mesmo outbox.
+        # Fail-open: nunca interrompe o loop de download.
+        try:
+            _request_orbit_handoff(path, task_id="dl_cemig", utility="CEMIG", run_id=run_id)
+        except Exception as exc:
+            log(f"Handoff Radar->Orbit indisponível: {exc}", "WARN")
+except Exception:
+    def _request_handoff(path, *, run_id=None) -> None:  # type: ignore[misc]
+        pass
+
+try:
     import pdfplumber
     _PDFPLUMBER_OK = True
 except ImportError:
@@ -1707,6 +1721,9 @@ def executar(limite: Optional[int] = None, um_por_cnpj: bool = False) -> int:
                             arquivo=str(destino),
                         )
                         _emit("downloaded", uc=item.uc, mes_ref=fat.mes_ref, carimbo=carimbo)
+                        # Contrato canônico Radar->Orbit: alimenta só a
+                        # entrada do pipeline via outbox/drain.
+                        _request_handoff(destino)
                         baixadas += 1
                         log(f"  ✓ {fat.mes_ano} → {carimbo}.pdf", "OK")
                     else:
