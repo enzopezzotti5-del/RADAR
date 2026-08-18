@@ -73,6 +73,24 @@ except Exception:
     def _emit(outcome: str, **_: str) -> None:  # type: ignore[misc]
         pass
 
+try:
+    from radar_v2.app.services.orbit_handoff import request_orbit_handoff as _request_orbit_handoff
+    def _request_handoff(path, *, run_id=None) -> None:
+        # Contrato canônico Radar->Orbit (mesma função usada pelo ENEL SP).
+        # celesc_bt.py e celesc_mt.py compartilham este mesmo loop de
+        # download via monkeypatch de TENSAO_GRUPO_A ("BT" ou "MT") — o
+        # task_id correto é derivado do valor atual dessa constante de
+        # módulo, a mesma que já decide a pasta de destino do PDF
+        # (_pasta_pdf_servidor). Fail-open: nunca interrompe o download.
+        task_id = "dl_celesc_bt" if TENSAO_GRUPO_A == "BT" else "dl_celesc_mt"
+        try:
+            _request_orbit_handoff(path, task_id=task_id, utility="CELESC", run_id=run_id)
+        except Exception as exc:
+            log.warning("Handoff Radar->Orbit indisponível: %s", exc)
+except Exception:
+    def _request_handoff(path, *, run_id=None) -> None:  # type: ignore[misc]
+        pass
+
 
 URL_PORTAL = "https://conecte.celesc.com.br/"
 URL_LOGIN = "https://conecte.celesc.com.br/autenticacao/login"
@@ -1307,6 +1325,10 @@ def baixar_faturas_2026(
                 arquivo=str(destino_servidor),
             )
             _emit("downloaded", uc=uc, mes_ref=mes_ref_competencia, carimbo=carimbo)
+            # Contrato canônico Radar->Orbit: alimenta só a entrada do
+            # pipeline via outbox/drain. Não decide destino terminal nem
+            # digitação — isso permanece do lado Orbit.
+            _request_handoff(destino_servidor)
             log.info("    PDF baixado: %s", final_path.name)
         else:
             log.warning("    Nenhum PDF detectado para %s | %s", fatura.get("mes_ref"), fatura.get("vencimento"))
