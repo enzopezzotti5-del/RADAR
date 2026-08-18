@@ -1965,10 +1965,14 @@ def selecionar_faturas_pendentes(
 ) -> List[FaturaTela]:
     log.info(f"  Seleção de faturas para instalação={instalacao} cnpj={cnpj}")
 
-    # No modo "última conta" para assim que achar a primeira fatura válida.
-    # Quando há ref alvo específica precisa varrer mais painéis para encontrá-la.
-    _parar = 0 if (_baixar_todas_faturas_ano or _refs_alvo_norm is not None) else 1
-    faturas = listar_faturas_na_tela(driver, parar_apos_n=_parar)
+    # Varre sempre todos os painéis disponíveis (até `total_paineis`, tipicamente
+    # <=24). O corte antigo (parar_apos_n=1 fora dos modos "todas as faturas"/
+    # "refs alvo") parava no primeiro painel lido, e se essa fatura estivesse
+    # VENCIDA ou já constasse no índice, nenhuma fatura elegível em painéis
+    # seguintes era vista — causa raiz de baixadas=0 mesmo com faturas elegíveis
+    # disponíveis. A classificação/dedupe abaixo já opera corretamente sobre a
+    # lista completa (era o caminho já exercitado pelos modos especiais).
+    faturas = listar_faturas_na_tela(driver, parar_apos_n=0)
     if not faturas:
         log.info("  Nenhuma fatura encontrada na tela")
         return []
