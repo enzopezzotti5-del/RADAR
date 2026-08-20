@@ -1,14 +1,9 @@
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
-import { Outlet, Navigate } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 import { Topbar } from './Topbar'
-import { useAuth } from '@/hooks/use-auth'
 
 export default function Layout() {
-  const { isAuthenticated, loading } = useAuth()
-  if (loading) return null
-  if (!isAuthenticated) return <Navigate to="/login" />
-
   return (
     <SidebarProvider>
       <AppSidebar />

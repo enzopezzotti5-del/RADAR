@@ -1,12 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Activity, CalendarDays, CalendarClock, DownloadCloud, LayoutDashboard, LogOut, Mail, Settings } from 'lucide-react'
+import { Activity, CalendarDays, CalendarClock, DownloadCloud, LayoutDashboard, Mail, Settings } from 'lucide-react'
 
 import logoUrl from '@/assets/chatgpt-image-24-de-jul.de-2026-104525-83e13.png'
-import { useAuth } from '@/hooks/use-auth'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -27,8 +25,6 @@ const items = [
 
 export function AppSidebar() {
   const location = useLocation()
-  const { signOut, authEnabled } = useAuth()
-
   return (
     <Sidebar variant="inset" className="border-r border-border">
       <SidebarHeader className="flex h-16 items-center justify-center overflow-hidden border-b border-border px-4">
@@ -54,20 +50,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      {authEnabled && (
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={() => {
-                void signOut()
-              }}>
-                <LogOut />
-                <span>Sair</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      )}
     </Sidebar>
   )
 }
