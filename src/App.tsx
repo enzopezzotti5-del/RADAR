@@ -5,7 +5,6 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
-import Login from './pages/Login'
 import Downloaders from './pages/Downloaders'
 import Executions from './pages/Executions'
 import ExecutionDetail from './pages/ExecutionDetail'
@@ -13,19 +12,17 @@ import Schedules from './pages/Schedules'
 import Settings from './pages/Settings'
 import Calendar from './pages/Calendar'
 import EmailInvoices from './pages/EmailInvoices'
-import { AuthProvider } from './hooks/use-auth'
 import { ThemeProvider } from './hooks/use-theme'
 
 const App = () => (
-  <AuthProvider>
-    <ThemeProvider>
+  <ThemeProvider>
       <BrowserRouter>
         <TooltipProvider>
           <Toaster />
           <Sonner />
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Navigate to="/login" replace />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/signup" element={<Navigate to="/" replace />} />
             <Route element={<Layout />}>
               <Route path="/" element={<Index />} />
               <Route path="/downloaders" element={<Downloaders />} />
@@ -41,8 +38,7 @@ const App = () => (
           </Routes>
         </TooltipProvider>
       </BrowserRouter>
-    </ThemeProvider>
-  </AuthProvider>
+  </ThemeProvider>
 )
 
 export default App
