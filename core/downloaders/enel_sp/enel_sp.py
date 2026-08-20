@@ -927,6 +927,8 @@ class EnelDownloaderArquivista:
         ignorar_indice: bool = False,
         forcar_navegador: bool = False,
         navegador_headless: bool = False,
+        apenas_mais_recente: bool = False,
+        permitir_fallback_navegador: bool = True,
     ) -> bool:
         if not self.autenticar():
             self.log("Autenticacao falhou. Encerrando downloader com erro.", "ERROR")
@@ -1038,6 +1040,16 @@ class EnelDownloaderArquivista:
                     )
                     continue
 
+            if apenas_mais_recente:
+                def chave_referencia(conta: Dict) -> tuple[int, int]:
+                    referencia = str(conta.get("ANO_MES_REF", "")).strip()
+                    match = re.fullmatch(r"(\d{2})/(\d{4})", referencia)
+                    if match:
+                        return int(match.group(2)), int(match.group(1))
+                    return 0, 0
+
+                contas = [max(contas, key=chave_referencia)]
+
             for c in contas:
                 belnr = str(c.get("BELNR"))
                 situacao = str(c.get("SITUACAO", "")).strip().lower()
@@ -1045,6 +1057,13 @@ class EnelDownloaderArquivista:
 
                 # Baixa todas as faturas de 2026, independente do status
                 self.log(f"Fatura {ref} — status: '{situacao.capitalize()}'", "INFO")
+
+                # Não consultar/gerar segunda via de uma fatura já protegida
+                # pelo índice. Em buscas retomadas isso evita uma chamada de
+                # portal desnecessária (e potencialmente bloqueante) antes do
+                # skip idempotente.
+                if self._fatura_deve_ser_pulada(anlage, anlage_portal, ref, belnr, ignorar_indice=ignorar_indice):
+                    continue
 
                 bundle_protocolo = self._gerar_protocolo_segunda_via(c)
                 protocolo = str(bundle_protocolo.get("E_PROTOCOLO") or "").strip() if bundle_protocolo else ""
@@ -1059,9 +1078,6 @@ class EnelDownloaderArquivista:
                     bundle_protocolo = None
                 if not protocolo:
                     self._marcar_status_busca(status="FALHA_ACESSO", uc=anlage, detalhe=f"validatesegundavia:{ref}")
-                    continue
-
-                if self._fatura_deve_ser_pulada(anlage, anlage_portal, ref, belnr, ignorar_indice=ignorar_indice):
                     continue
 
                 if forcar_navegador:
@@ -1089,6 +1105,10 @@ class EnelDownloaderArquivista:
                 )
 
                 if res_pdf.get("_error"):
+                    if not permitir_fallback_navegador:
+                        self._marcar_status_busca(anlage, "FALHA_DOWNLOAD", f"{ref}: generatepdf")
+                        self.log(f"Erro na requisição PDF ({ref}); fallback Selenium desabilitado.", "ERROR")
+                        continue
                     self.log(f"Erro na requisição PDF ({ref}): falha HTTP. Tentando Selenium...", "WARNING")
                     status_navegador = self._baixar_fatura_via_navegador_seguro(
                         anlage,
@@ -1107,6 +1127,11 @@ class EnelDownloaderArquivista:
 
                 bin64 = res_pdf.get("E_BIN_FAT")
                 if not bin64:
+                    if not permitir_fallback_navegador:
+                        detalhe = res_pdf.get("E_MSG") or "PDF nao retornado"
+                        self._marcar_status_busca(anlage, "FALHA_DOWNLOAD", f"{ref}: {detalhe}")
+                        self.log(f"PDF não retornado ({ref}); fallback Selenium desabilitado.", "ERROR")
+                        continue
                     self.log(
                         f"PDF não retornado ({ref}): {res_pdf.get('E_MSG') or res_pdf}. Tentando Selenium...",
                         "WARNING",
